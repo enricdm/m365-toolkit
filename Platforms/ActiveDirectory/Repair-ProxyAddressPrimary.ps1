@@ -1,41 +1,56 @@
 <#
 .SYNOPSIS
-    Detecta y corrige objetos de AD sin direccion SMTP primaria valida.
+    Finds and repairs AD objects with no valid primary SMTP address.
 
 .DESCRIPTION
-    Escanea usuarios habilitados para correo y marca:
-      - NoPrimary        : ningun valor con prefijo 'SMTP:' en mayusculas
-      - BadPrefix        : prefijo no reconocido (STMP, SMPT, SMTO, smtp mal escrito...)
-      - MultiplePrimary  : mas de un 'SMTP:'
-      - PrimaryIsMOERA   : la primaria es *.onmicrosoft.com
-      - MailMismatch     : atributo 'mail' distinto de la primaria
+    Scans mail-enabled users and flags:
+      - NoPrimary        : no value carrying an uppercase 'SMTP:' prefix
+      - BadPrefix        : unrecognised prefix (STMP, SMPT, SMTO, misspelled smtp...)
+      - MultiplePrimary  : more than one 'SMTP:'
+      - PrimaryIsMOERA   : the primary address is *.onmicrosoft.com
+      - MailMismatch     : the 'mail' attribute differs from the primary address
 
-    Con -Execute repara UNICAMENTE el caso seguro:
-      objeto con 0 primarias + exactamente 1 valor con prefijo mal escrito
-      -> se elimina el valor corrupto y se anade como 'SMTP:'.
-    El resto se reporta pero no se toca.
+    With -Execute it repairs ONLY the safe case:
+      an object with 0 primaries and exactly 1 value carrying a misspelled prefix
+      -> the corrupt value is removed and re-added as 'SMTP:'.
+    Everything else is reported but left untouched.
+
+    The scope of the automatic repair is deliberately narrow. An object with two
+    primaries, or with several malformed values, needs a human to decide which
+    address should win; guessing would silently change someone's reply-to address.
 
 .PARAMETER Server
-    Controlador de dominio on-prem contra el que se consulta. Obligatorio.
+    On-premises domain controller to query. Mandatory.
 
 .PARAMETER AcceptedRoot
-    Dominio que debe llevar la direccion primaria. Solo se actualiza el atributo
-    'mail' cuando la direccion reparada pertenece a este dominio.
+    Domain the primary address is expected to belong to. The 'mail' attribute is
+    only updated when the repaired address falls inside this domain.
 
 .PARAMETER SearchBase
-    DN donde buscar. "" = raiz del dominio.
+    Distinguished name to search under. "" = domain root.
 
 .PARAMETER Execute
-    Aplica las correcciones. Sin este switch solo se informa.
+    Applies the repairs. Without this switch the script only reports.
+
+.PARAMETER BadPrefixes
+    Misspellings treated as repairable. Extend if your directory has others.
+
+.PARAMETER ValidPrefixes
+    Prefixes considered legitimate. Anything outside this list counts as BadPrefix.
 
 .EXAMPLE
-    # Dry-run: solo informa y exporta el CSV
+    # Dry run: report only, exports the CSV
     .\Repair-ProxyAddressPrimary.ps1 -Server 'DC01.corp.local' -AcceptedRoot 'contoso.com'
 
 .EXAMPLE
-    # Aplica las correcciones seguras, acotado a una OU
+    # Apply the safe repairs, scoped to a single OU
     .\Repair-ProxyAddressPrimary.ps1 -Server 'DC01.corp.local' -AcceptedRoot 'contoso.com' `
         -SearchBase 'OU=Users,DC=corp,DC=local' -Execute
+
+.NOTES
+    Requires : ActiveDirectory module (RSAT)
+    Rights   : write access to proxyAddresses and mail on the target user objects
+    After    : run a delta sync on AAD Connect and verify in Exchange Online
 #>
 
 [CmdletBinding()]
@@ -56,14 +71,14 @@ function Write-OK   { param($m) Write-Host "[OK] $m"  -ForegroundColor Green }
 function Write-Warn { param($m) Write-Host "[!!] $m"  -ForegroundColor Yellow }
 function Write-Die  { param($m) Write-Host "[XX] $m"  -ForegroundColor Red; exit 1 }
 
-Write-Step "Repair-ProxyAddressPrimary  -  $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
-if (-not $Execute) { Write-Warn "MODO DRY-RUN. Usa -Execute para aplicar cambios." }
+Write-Step "Repair-ProxyAddressPrimary  -  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+if (-not $Execute) { Write-Warn "DRY-RUN MODE. Use -Execute to apply changes." }
 
 try { Import-Module ActiveDirectory -ErrorAction Stop }
-catch { Write-Die "No se pudo cargar el modulo ActiveDirectory (RSAT)." }
+catch { Write-Die "Could not load the ActiveDirectory module (RSAT)." }
 
-# --------------------------- RECOGIDA ---------------------------
-Write-Step "Consultando objetos en $Server ..."
+# --------------------------- COLLECT ----------------------------
+Write-Step "Querying objects on $Server ..."
 $params = @{
     Filter     = 'proxyAddresses -like "*"'
     Properties = 'proxyAddresses','mail','userPrincipalName','distinguishedName','enabled','msExchRecipientTypeDetails'
@@ -72,16 +87,16 @@ $params = @{
 if ($SearchBase) { $params['SearchBase'] = $SearchBase }
 
 $users = Get-ADUser @params
-Write-OK "$($users.Count) objetos con proxyAddresses recuperados."
+Write-OK "$($users.Count) objects with proxyAddresses retrieved."
 
-# --------------------------- ANALISIS ---------------------------
-Write-Step "Analizando prefijos..."
+# --------------------------- ANALYSE ----------------------------
+Write-Step "Analysing prefixes..."
 $findings = New-Object System.Collections.Generic.List[object]
 
 foreach ($u in $users) {
 
     $addrs   = @($u.proxyAddresses)
-    # Comparacion sensible a mayusculas: solo 'SMTP:' cuenta como primaria
+    # Case-sensitive comparison: only 'SMTP:' counts as the primary address
     $primary = @($addrs | Where-Object { $_ -cmatch '^SMTP:' })
     $bad     = @($addrs | Where-Object {
                     $p = ($_ -split ':',2)[0]
@@ -102,7 +117,7 @@ foreach ($u in $users) {
 
     if ($issues.Count -eq 0) { continue }
 
-    # Candidato de reparacion: 0 primarias + 1 solo valor con prefijo corrupto
+    # Repair candidate: 0 primaries + exactly 1 value with a corrupt prefix
     $fixable  = $false
     $fixFrom  = $null
     $fixTo    = $null
@@ -112,7 +127,7 @@ foreach ($u in $users) {
         $prefix = $parts[0]
         $addr   = $parts[1]
         if (($BadPrefixes -contains $prefix.ToUpper()) -and $addr -match '^[^@]+@[^@]+\.[^@]+$') {
-            # no debe existir ya el mismo correo como alias secundario
+            # the same address must not already exist as a secondary alias
             $dupe = $addrs | Where-Object { $_ -imatch "^smtp:$([regex]::Escape($addr))$" }
             if (-not $dupe) {
                 $fixable = $true
@@ -140,30 +155,30 @@ foreach ($u in $users) {
     })
 }
 
-Write-OK "$($findings.Count) objetos con incidencias."
+Write-OK "$($findings.Count) objects with issues."
 $fixables = @($findings | Where-Object { $_.Fixable })
-Write-OK "$($fixables.Count) reparables automaticamente."
+Write-OK "$($fixables.Count) automatically repairable."
 
-if ($findings.Count -eq 0) { Write-Step "Nada que hacer."; return }
+if ($findings.Count -eq 0) { Write-Step "Nothing to do."; return }
 
 $findings | Group-Object Issues | Sort-Object Count -Descending |
-    Select-Object @{n='Incidencia';e={$_.Name}}, Count | Format-Table -AutoSize
+    Select-Object @{n='Issue';e={$_.Name}}, Count | Format-Table -AutoSize
 
 # --------------------------- EXPORT -----------------------------
 if (-not (Test-Path $ExportDir)) { New-Item -ItemType Directory -Path $ExportDir | Out-Null }
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $csv   = Join-Path $ExportDir "ProxyAddressAudit-$stamp.csv"
 $findings | Export-Csv -Path $csv -NoTypeInformation -Encoding UTF8 -Delimiter ';'
-Write-OK "Informe exportado: $csv"
+Write-OK "Report exported: $csv"
 
-# --------------------------- APLICAR ----------------------------
+# --------------------------- APPLY ------------------------------
 if (-not $Execute) {
-    Write-Step "Dry-run finalizado. Revisa el CSV y relanza con -Execute."
+    Write-Step "Dry run finished. Review the CSV and re-run with -Execute."
     return
 }
-if ($fixables.Count -eq 0) { Write-Step "Sin candidatos automaticos."; return }
+if ($fixables.Count -eq 0) { Write-Step "No automatic candidates."; return }
 
-Write-Step "Aplicando $($fixables.Count) correcciones..."
+Write-Step "Applying $($fixables.Count) repairs..."
 $results = New-Object System.Collections.Generic.List[object]
 
 foreach ($f in $fixables) {
@@ -188,5 +203,5 @@ foreach ($f in $fixables) {
 
 $log = Join-Path $ExportDir "ProxyAddressFix-$stamp.csv"
 $results | Export-Csv -Path $log -NoTypeInformation -Encoding UTF8 -Delimiter ';'
-Write-OK "Log de cambios: $log"
-Write-Step "Lanza un delta sync en el AAD Connect del dominio y verifica en EXO."
+Write-OK "Change log: $log"
+Write-Step "Run a delta sync on the domain's AAD Connect and verify in Exchange Online."
