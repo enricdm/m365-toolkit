@@ -22,12 +22,19 @@ an unauthenticated SMBv1 network probe.
 
 ### `Repair-ProxyAddressPrimary.ps1`
 
-In a hybrid tenant, a mailbox needs exactly one **uppercase** `SMTP:` entry in `proxyAddresses` to
-mark the primary address. Typos in that prefix (`STMP:`, `SMPT:`, …) are invisible in the ADUC UI
-but leave the object with no primary address, which then breaks mail flow or Entra Connect sync.
+In hybrid identity, `proxyAddresses` is the attribute that decides a user's mail address, and the
+primary one is marked by an **uppercase** `SMTP:` prefix — exactly one value, exactly that casing.
+A `STMP:` or an `SMPT:`, a typo at the keyboard and nothing more, leaves the object with **no**
+primary address at all. ADUC draws both entries the same way, so nothing looks wrong at the place
+the mistake was made; the symptom turns up later and somewhere else, as mail that does not deliver
+or an object Entra Connect refuses to sync.
+
 This script finds those objects and classifies each one: `NoPrimary`, `BadPrefix`,
 `MultiplePrimary`, `PrimaryIsMOERA` (primary is the `*.onmicrosoft.com` routing address), and
-`MailMismatch` (the `mail` attribute disagrees with the primary).
+`MailMismatch` (the `mail` attribute disagrees with the primary). It detects five patterns and
+repairs exactly one — the only one with a single correct answer. An object with two primaries needs
+a person to decide which address wins, and guessing there would quietly change someone's reply-to
+address.
 
 ```powershell
 # Dry-run: report and export CSV, change nothing
@@ -65,10 +72,19 @@ is used.
 > Only run it against hosts you are explicitly authorised to test, and tell your security team
 > before you do. The same warning is in the script header.
 
-Confirms — or refutes — an SMBv1 finding from a vulnerability scanner, from the network, the same way
-the scanner sees it. It opens TCP 445 and sends an `SMB_COM_NEGOTIATE` offering **only** SMB1
-dialects, deliberately omitting `SMB 2.???` so an SMB2-capable server cannot upgrade its way out of
-the question, then reads which dialect the server selects.
+A vulnerability scan flagged SMBv1 on several domain controllers. SMBv1 is the protocol EternalBlue
+exploited — WannaCry and NotPetya both came in that way. Microsoft deprecated it in 2014 and it
+hasn't shipped enabled since Windows 10 1709, but it keeps reappearing: an old NAS turns it back on,
+a network printer needs it, a legacy scanner nobody wants to touch.
+
+The question wasn't whether it was enabled. It was how to **prove** it. Checking the registry tells
+you what's *configured* — and on machines where a GPO didn't apply, or the service never restarted
+after the change, that diverges from what the server actually answers on the wire. If you're going
+to close an audit finding, you want the second answer.
+
+So this asks the way the scanner asks: open 445, send an `SMB_COM_NEGOTIATE` offering **only** SMB1
+dialects — deliberately omitting `SMB 2.???` so an SMB2-capable server can't upgrade its way out of
+the question — and read which one it picks.
 
 Because SMB dialect negotiation happens *before* authentication, this needs no credentials and no
 admin rights on the target — only reachability. It authenticates nothing, exploits nothing, and

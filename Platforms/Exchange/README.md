@@ -75,6 +75,14 @@ interactively with the signed-in account.
 
 ## `Groups/`
 
+Group creation is the most common write a service desk makes in Exchange Online,
+and it is where the platform is least honest about timing. `New-DistributionGroup`
+returns, the group exists, and the next cmdlet cannot see it yet. Add members
+immediately and the call fails intermittently, with an error that reads like a
+permissions problem and sends you looking in the wrong place. The `Start-Sleep`
+in step 3 below is not superstition; it is the only handle any of these scripts
+has on directory replication.
+
 The three group scripts share one pattern, learned the hard way:
 
 1. **Validate before writing** — resolve every member and check the address is not
@@ -93,6 +101,20 @@ five steps, including an exportable preflight and a post-provisioning check of t
 live object. Read that one first; the other two are lighter variants.
 
 ### `Groups/New-FaxDistributionList.ps1`
+
+Fax has not gone away in a tenant this size; it has moved behind a gateway that
+receives the fax and emails it on to a list of people. The handoff is where it
+breaks, and it breaks quietly: the list is created correctly, the gateway
+reports success, and nothing ever arrives.
+
+The fix — `RequireSenderAuthenticationEnabled = $false` — is worth being plain
+about, because it means the address now accepts mail from anyone on the
+internet. That is a justified exception for a fax gateway, not a free one, and
+it is real spam surface, so the script sets it explicitly rather than as a side
+effect and says so. This is also the only one of the three group scripts that
+checks for an address collision *before* it writes anything, which is why it is
+the reference implementation above and why the other two are the ones with
+catching up to do.
 
 Provisions a fax-to-mail distribution list. Fax gateways are the awkward case:
 they relay **unauthenticated**, so the Exchange default
@@ -136,6 +158,21 @@ membership against what was requested.
 
 ### `Groups/New-MailGroup.ps1`
 
+"Create a group for this team" sounds like one request, but it is three
+different objects and the choice is expensive to reverse. A distribution list
+delivers mail and grants nothing. A mail-enabled security group can also be used
+to grant access — which is what a shared calendar or a document library needs.
+A Microsoft 365 group brings a mailbox, a SharePoint site and a Teams surface
+along with it, whether or not anyone asked for those. Once people have started
+sending to the address, changing your mind is a migration rather than an edit,
+so the type is asked for up front instead of inferred.
+
+The known defects listed below are worth reading before running it. There is no
+pre-write collision check, and the type comes from a `Read-Host`, which rules
+out scheduling it. They are documented rather than quietly patched because they
+are the concrete evidence for the consolidation argument at the end of this
+file: the same fix exists one directory over and never travelled.
+
 One script for the three group types — distribution list, mail-enabled security
 group, or Microsoft 365 group — chosen from a prompt at runtime. External addresses
 get a MailContact created first (DL and SG only; M365 groups do not take them), and
@@ -170,6 +207,19 @@ also `Connect-MgGraph -Scopes "Group.ReadWrite.All"`.
 > `Ensure-MailContact` uses an unapproved PowerShell verb.
 
 ### `Groups/Edit-MailGroupMember.ps1`
+
+Most group work is not creation. It is the steady stream of "add these four,
+remove these two" that follows every reorganisation — and by the time it reaches
+you, somebody has usually done half of it by hand already. A script that treats
+"remove a person who is not a member" as an error is useless for that: it throws
+on the second job and leaves the run half applied, which is the worst state to
+hand back.
+
+So absence counts as success here, and the run is built to be repeatable. The
+other decision worth naming is that an internal address which does not resolve
+is reported as a probable typo and skipped, rather than having a MailContact
+created for it: auto-creating a contact for `jonh.smith@contoso.com` would make
+the typo permanent and quietly route that person's mail out of the tenant.
 
 Membership changes on groups that already exist — no creation, no sender-restriction
 logic. Group type is auto-detected per group (`Add/Remove-DistributionGroupMember`
@@ -209,6 +259,20 @@ written, including on a dry run.
 ## `Mailboxes/`
 
 ### `Mailboxes/New-SharedCalendar.ps1`
+
+A team asks for a shared calendar, and what they usually end up with is a mailbox
+whose calendar folder carries a dozen individual permissions — one per person,
+stamped by hand, never removed when somebody moves on. Six months later nobody
+can say who has access without dumping the folder ACL, and the answer is always
+"more people than you think".
+
+Two things here are wider in scope than the script's name suggests, and both are
+deliberate. The `Default` permission on the calendar folder is set to
+`AvailabilityOnly`, and `Default` means the whole organisation, not the team:
+free/busy visible to everyone, contents only to the access group. And the alias
+and group naming (`shared.<CC>.<CITY>.<name>`, `MB_<alias>_Kalender_Editor`)
+follows one subsidiary's convention — it is a convention, not a requirement, so
+adapt it before running this in a tenant that names things differently.
 
 Provisions a shared team calendar. The access model is the point: instead of
 stamping folder permissions per person, one mail-enabled **security** group
@@ -253,6 +317,19 @@ status, plus the resulting folder permissions on screen.
 
 ### `Mailboxes/New-SharedMailbox.ps1`
 
+A shared mailbox is the standard answer to "we need a team address", and the
+provisioning is trivial. The access grants are where the tickets come from. Two
+separate rights are involved and requesters conflate them: FullAccess lets you
+read the mailbox, SendAs lets you send from it, and someone who asks for "access"
+means both. Grant one and not the other and you get a team that can read the
+inbox but cannot answer from it, which comes straight back as a second ticket.
+So the two are granted independently and one failing does not hide the other.
+
+The other recurring surprise is the partner address in the member CSV, which
+cannot be given access at all — and the useful outcome there is the eight
+internal people provisioned plus a clear line about the one that could not be,
+rather than a failed run.
+
 Creates a shared mailbox and grants FullAccess + SendAs to everyone in a CSV.
 External addresses are skipped for mailbox permissions with an explanation rather
 than failing silently — Exchange cannot grant mailbox rights to a non-tenant
@@ -282,6 +359,14 @@ listing of the resulting permissions.
 ### `Mailboxes/Set-MailboxForwarding.ps1`
 
 Sets server-side forwarding on one or more mailboxes.
+
+The request behind this is ordinary — somebody leaves and their mail has to reach
+whoever is covering the role. What makes it unusual is that an attacker who
+compromises a mailbox does exactly the same thing, with the same cmdlet, to read
+someone's mail without ever signing in again. Automating this means automating
+both, so the design assumes misuse as well as use: the previous value of every
+setting it touches is recorded first, and the external-target guard below was
+added afterwards, not shipped with the original.
 
 > ### ⚠ Read this before using it
 >
@@ -332,6 +417,19 @@ per mailbox, and whether the target was external. Keep it.
 
 ### `MailFlow/Block-MaliciousDomain.ps1`
 
+This is incident-response tooling. An indicator arrives — a user report, a vendor
+feed, another company in the group that got hit first — and the useful window for
+acting on it is measured in minutes, not change windows. The work itself is two
+separate journeys through the Tenant Allow/Block List in the portal, done under
+time pressure, which is precisely the situation in which one of the two gets
+forgotten and nobody notices until the same campaign lands again through the
+other axis.
+
+The no-expiry choice noted below is deliberate for the same reason: an indicator
+does not stop being one after thirty days, and a block that lapses on a timer is
+worse than one that was never set, because by then everyone assumes the
+protection is still there.
+
 Blocks a domain in the Tenant Allow/Block List as **both** a Sender and a URL entry.
 Both matter: a Sender block stops mail claiming to come from the domain, but does
 nothing about a link to it inside a message arriving from somewhere else. Most
@@ -364,6 +462,20 @@ one.
 
 ### `MailFlow/Test-PhishingSimulationRule.ps1`
 
+A phishing simulation platform only works if the mail users report actually
+reaches it, which is normally arranged with a transport rule that adds the
+vendor as a recipient. The rule gets configured once and then nobody looks at it
+again — until the vendor dashboard shows suspiciously few reports and somebody
+has to answer whether the pipeline is broken or the users simply stopped
+reporting.
+
+That is a verification question rather than a configuration one, and it needs a
+different kind of evidence. A rule can exist, be enabled, and match on paper
+while still not firing — a condition that no longer fits the report button's
+format, a higher-priority rule consuming the message first. Reading the rule
+definition back tells you nothing you did not already know, so this goes after
+the traffic instead and leaves a report behind that can be attached to a ticket.
+
 Read-only. Proves whether the transport rule that forwards user-reported phishing to
 the simulation vendor is actually firing, by tracing **both legs**: inbound to the
 trap mailbox, and outbound to the vendor address the rule adds as a recipient. A
@@ -388,6 +500,22 @@ change record.
 > session you had open before running it.
 
 ### `MailFlow/Get-ProofpointLiteEligibility.ps1`
+
+Per-mailbox mail-security licensing turns on one number: how much mail each
+mailbox actually receives. Get it wrong in one direction and you buy protection
+for mailboxes that receive nothing; wrong in the other and real users go
+uncovered. It is also a number the vendor and the finance team will both check
+against the admin center, so it has to survive being compared.
+
+The earlier version rebuilt that figure by hand: thirty days of message trace in
+twelve-hour windows, sixty-odd calls, filtered on `Status = Delivered`. It
+undercounted, consistently, against the same report in the admin center — and
+losing an argument about whose count is right is not a good use of a licensing
+review. So the decision was to stop reconstructing something Microsoft already
+publishes and read the report's own source instead, described below. The lesson
+generalises well past this script: when you rebuild a metric the provider
+already calculates, your number and theirs will diverge, and the one quoted in
+the meeting is theirs.
 
 Read-only. Counts mail received per mailbox over a period and splits the tenant into
 "under the threshold" and "at or over it" — the input a per-mailbox mail-security
@@ -427,6 +555,20 @@ an on-screen summary and the top 10 highest-volume mailboxes.
 
 ### `Resources/Get-CountryResource.ps1`
 
+Ask which meeting rooms belong to a given country and there is no attribute that
+answers it. Rooms were created across many years and several conventions: the
+origin marker in `CustomAttribute12` only exists on the ones provisioned after
+that convention did, some have a `UsageLocation`, some announce their country
+only in a display-name token or in the shape of their SMTP address. Filter on any
+single signal and you get a short, confident, wrong list — and the rooms you
+missed are invisible, because nothing failed.
+
+Hence five weak signals ORed together rather than one strong one, and the
+`MatchedBy` column, which is the honest part of the output: "40 rooms, 9 of them
+found only by a name pattern" is a visibly different answer from "40 rooms, all
+marked", and it lets you judge how much to trust the total instead of taking it
+on faith.
+
 Read-only. Finds room and equipment mailboxes belonging to a country.
 
 In a tenant that grew by acquisition, resource mailboxes are named every possible
@@ -458,6 +600,20 @@ conventions.
 **Permissions:** View-Only Recipients.
 
 ### `Resources/Set-RoomMailbox.ps1`
+
+Room booking looks trivial until the room is a boardroom, and then the question
+becomes who may reserve it. Exchange answers that through `BookInPolicy` and
+`AllBookInPolicy`, two settings that are easy to get exactly backwards: an empty
+`BookInPolicy` with restrictions enabled does not mean "anyone", it means the
+room auto-declines every request from everybody, silently, and the first person
+to find out is the one whose meeting disappeared. The script refuses to apply
+that state at all.
+
+The second thing to get right is which of the two access models you actually
+want, because requesters ask for both with the same sentence — "give the team
+access to the room" can mean restricting who may book it or letting people amend
+other people's bookings, and the two are implemented in entirely different
+places. They are set out below, along with the trap in the second one.
 
 Configures a room mailbox: place metadata for Room Finder, an auto-accept booking
 policy, and who is allowed to use it. Two access models:

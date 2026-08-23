@@ -24,9 +24,17 @@ Both scripts sign in interactively via `Add-PowerAppsAccount`.
 
 ### `Get-PowerPlatformAdminAudit.ps1`
 
-Enumerates every environment in the tenant and reports who holds System Administrator or
-Environment Maker on each — the standing-privilege question for Power Platform, where environments
-tend to accumulate makers nobody remembers granting.
+Power Platform makes environments easy to create, and their administrator roles live **outside**
+Entra ID's role model — so they never show up in the privileged access reviews that cover the rest
+of the tenant. Someone holding environment administrator can build flows that run under their own
+credentials and reach corporate data, and a PIM review will not see any of it. The
+standing-privilege question has to be asked separately here, and environments tend to accumulate
+makers nobody remembers granting.
+
+So this enumerates every environment in the tenant and reports who holds System Administrator or
+Environment Maker on each. One easy mistake it documents in a comment:
+`Get-AdminPowerAppRoleAssignment` is an **app**-level cmdlet — it wants an `-AppName` and answers a
+different question. Environment-level roles come from `Get-AdminPowerAppEnvironmentRoleAssignment`.
 
 ```powershell
 .\Get-PowerPlatformAdminAudit.ps1
@@ -54,9 +62,17 @@ tend to accumulate makers nobody remembers granting.
 
 ### `Grant-EnvironmentMaker.ps1`
 
-Handles the common request "I need to import my solution into the team environment". Environment
-Maker is the least-privilege answer: it lets someone build and import in **one** environment without
-making them an administrator of it or of the tenant.
+The common request is "I need to import my solution into the team environment", and the common
+answer is to make the person an environment administrator, which grants a great deal more than the
+request needs. Environment Maker is the smaller answer: it lets someone create and import apps and
+flows in **one** environment, and nothing beyond that — not administration of the environment, not
+anything at tenant level.
+
+What it does not do is worth stating plainly, because that is where half an hour of confusion goes:
+in an environment with Dataverse, importing a solution also needs the `System Customizer` Dataverse
+role, and this script grants no Dataverse role at all — that step stays manual, in the portal
+(details below). Worth knowing too: there is no revocation script in this repository, for this grant
+or for the Purview super user one. Both privileges are granted by script and taken back by hand.
 
 ```powershell
 # Dry run — prints the intended change and exits without connecting to anything

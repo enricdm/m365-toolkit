@@ -52,13 +52,23 @@ and `Set-FileLabel` against the resulting PST.
 > Super user activity is auditable via `Get-AipServiceAdminLog` and the Purview audit log — and it
 > will be audited, so keep the window short and narrow.
 
-The problem this solves: when a labelling policy is deleted, files already labelled keep their
-label and stay encrypted. If the label applied encryption that excludes administrators, nobody can
-open those files to clean them up — including the person who has to fix it. Super user is the only
-supported way back in.
+A sensitivity label with encryption does not just mark a file — it encrypts it with Azure RMS. So
+when a label lands on documents that have to stay readable, or a policy changes and the label has to
+come off a large set of files, removing the label is not enough on its own: the content has to be
+decrypted. And decrypting content that is not yours requires the Azure RMS **super user** feature,
+which gives one identity the ability to decrypt any protected content in the tenant. There is no
+smaller version of that privilege.
 
-The script is split into five phases so you run one, read the output, and decide whether to
-continue. Nothing is modified before Phase 2, and nothing is destroyed before Phase 4.
+The same thing happens from the other direction: when a labelling policy is deleted, files already
+labelled keep their label and stay encrypted, and if that label's encryption excludes
+administrators, nobody can open those files to clean them up — including the person who has to fix
+it. Super user is the only supported way back in.
+
+That is why this is five phases and not one command. Phase 2 grants the privilege, phase 3
+inventories what actually carries the label, **phase 4 decrypts irreversibly and with no backup**,
+and phase 5 hands the privilege back. The split exists to force a human to read the inventory
+between 3 and 4. The gap worth knowing about is that nothing in the script forces phase 5: if nobody
+runs it, that identity keeps tenant-wide decryption indefinitely.
 
 | Phase | Does | Changes state |
 |:---:|---|:---:|

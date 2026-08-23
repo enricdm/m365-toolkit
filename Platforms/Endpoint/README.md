@@ -24,11 +24,17 @@ Intune, and a per-device detection script for desktop Visio/Project usage.
 
 ### `Get-OutOfSupportDevice.ps1`
 
-Answers "how much of the Windows estate is past end of servicing, and whose devices are they?" —
-the report you need before an upgrade campaign. It pulls every Windows device from Intune, converts
-each `osVersion` build number into its feature-update name (`19045` → `Windows 10 22H2`), compares
-that against a table of end-of-servicing dates, and enriches each row with the primary user's
-`usageLocation`, country and department, plus the last logged-on user.
+Windows 10 and 11 ship as versions, and each version has its own end-of-servicing date. Past that
+date a device stops receiving security updates while continuing to report as managed and compliant
+in Intune — compliance policy and servicing lifecycle are unrelated things, so nothing in the
+console marks it. There is no standard report that crosses the build number against the lifecycle
+calendar.
+
+So this one does. It pulls every Windows device from Intune, converts each `osVersion` build number
+into its feature-update name (`19045` → `Windows 10 22H2`), compares that against a table of
+end-of-servicing dates, and enriches each row with the primary user's `usageLocation`, country and
+department, plus the last logged-on user — the answer to "how much of the Windows estate is past end
+of servicing, and whose devices are they?", which is the report you need before an upgrade campaign.
 
 ```powershell
 .\Get-OutOfSupportDevice.ps1
@@ -63,11 +69,16 @@ Two behaviours to be aware of:
 
 ### `Get-VisioProjectDesktopUsage.ps1`
 
-There is no Microsoft cloud API that reports desktop Visio or Project usage, which makes licence
-reclamation for those two products guesswork. This script runs on the device instead and combines
-the two local signals that do exist: the **Office File MRU** (last file opened in the app, with a
-timestamp) and **UserAssist** (last `VISIO.EXE` / `WINPROJ.EXE` launch plus a run count). It reports
-the later of the two, along with install state, edition and executable version.
+Desktop Visio and Project are among the few M365 products whose usage Graph does not report at all.
+To decide whether one of those licences is being used, you have to ask the endpoint — an attempt to
+measure it from the tenant side ended in the conclusion that it was not measurable there, which is
+why the answer had to come down to the device.
+
+So this runs on the device and reads the two local signals that do exist, both from the signed-in
+user's registry: the **Office File MRU** (last file opened in the app, with a timestamp) and
+**UserAssist** (last `VISIO.EXE` / `WINPROJ.EXE` launch plus a run count — ROT13-decoded, with the
+launch time read out of the FILETIME inside the value blob). It keeps the later of the two, along
+with install state, edition and executable version.
 
 Read-only — `HKCU` and `HKLM` reads only, no writes to the device. It emits a single line of JSON to
 stdout, shaped for Intune Remediations, which captures the last stdout line.

@@ -16,7 +16,6 @@ reporting tools; the three that write are marked below and each has a dry-run mo
 | [`Storage/Set-SiteStorageQuota.ps1`](Storage/Set-SiteStorageQuota.ps1) | Sets the storage quota on one or more sites | **Yes** | interactive |
 | [`Storage/Send-StorageNotification.ps1`](Storage/Send-StorageNotification.ps1) | Emails site owners whose sites are over their storage threshold | **Yes** (sends mail) | app-only + cert |
 | [`Lifecycle/Restore-OneDriveFolder.ps1`](Lifecycle/Restore-OneDriveFolder.ps1) | Restores a deleted folder subtree from a recycle bin | **Yes** | app-only + cert |
-| [`Lifecycle/analyze_site_cleanup.py`](Lifecycle/analyze_site_cleanup.py) | Attributes inactive sites to a country/business unit and builds a cleanup workbook | No (reads exports) | n/a — offline |
 
 ## Requirements
 
@@ -26,7 +25,6 @@ reporting tools; the three that write are marked below and each has a dry-run mo
   - `PnP.PowerShell` — the connection, permission and lifecycle scripts
   - `Microsoft.Online.SharePoint.PowerShell` — the storage scripts
   - `ImportExcel` — `Send-StorageNotification.ps1` only
-- **Python 3.9+** with `pandas` and `openpyxl` for `analyze_site_cleanup.py`
 - **Roles:** SharePoint Administrator for tenant-wide operations; Site Collection Admin on each
   site for the direct permission scan and for restoring into someone's OneDrive.
 
@@ -54,24 +52,86 @@ Upload the certificate's public key to the app and keep the private key in
 
 ## Usage
 
-### Read-only scripts
+### `Connect-PnPSite.ps1`
+
+Every app-only script in this folder needs the same four steps before it can do
+anything: find the certificate, pair it with the app registration, open the PnP
+connection, fail clearly when the certificate is not there. This is that, factored
+out, so the certificate-resolution logic exists once instead of four times.
+
+Its parameters are mandatory with no defaults, and that is the point. An earlier
+version defaulted `-Url` to one person's OneDrive, so running it with no arguments
+connected you to a colleague's files and gave no indication that anything unusual
+had happened. A wrong default on a connection cmdlet is worse than no default: it
+turns a forgotten parameter into a silent, invasive success. `-Thumbprint` is the
+one genuinely optional value — omit it and the newest non-expired certificate
+matching `-CertSubject` is used.
 
 ```powershell
 # Open an app-only session (-Url is mandatory: no default target, by design)
 .\Connect-PnPSite.ps1 -Url 'https://contoso.sharepoint.com/sites/Example' `
     -ClientId '<client-id>' -Tenant 'contoso.onmicrosoft.com'
+```
 
+### `Clear-SpoTokenCache.ps1`
+
+The symptom is specific and maddening: `Connect-SPOService` keeps signing you in
+as the wrong account, or into a tenant you no longer work with, and
+`Disconnect-SPOService` does nothing about it. The token is not in the module. It
+is in the local identity caches — MSAL, the WAM token broker, `.IdentityService` —
+and nothing in the SPO module reaches them.
+
+Eight lines, with a side effect considerably larger than the name suggests: those
+caches are shared across the machine. Clearing them signs you out of *every*
+Microsoft 365 tool on that profile, not just SharePoint, so expect fresh sign-ins
+in Teams, Outlook and the Graph SDK afterwards. Close the PowerShell window and
+open a new one before running it — a session that has already loaded the identity
+assemblies can write the caches back on exit.
+
+```powershell
 # Fix a sign-in stuck on the wrong account, then reconnect
 .\Clear-SpoTokenCache.ps1 -AdminUrl 'https://contoso-admin.sharepoint.com'
+```
 
+### `Storage/Get-SiteStorage.ps1`
+
+The first half of the storage chain, and the reason it is a separate script from
+the second half: reading quota and writing quota deserve different levels of care.
+Run this, read the output, confirm the exact URLs — SharePoint site URLs are long,
+similar, and easy to copy one line off — and only then hand the confirmed ones to
+`Set-SiteStorageQuota.ps1`. Its export doubles as the "before" snapshot for that
+change.
+
+One caveat about the percentage it reports: it is computed against whatever cap is
+set on the site, and in a pooled-storage tenant that cap is often a large shared
+ceiling rather than a real per-site allocation. Useful for spotting sites that
+have been given an explicit quota; not a reliable ranking of who is actually full.
+The same trap is documented in more detail under `Get-SiteOwnerStatus.ps1` below.
+
+```powershell
 # Storage usage for every site, or just the ones matching a name
 .\Storage\Get-SiteStorage.ps1 -AdminUrl 'https://contoso-admin.sharepoint.com'
 .\Storage\Get-SiteStorage.ps1 -AdminUrl 'https://contoso-admin.sharepoint.com' -TitleFilter 'Finance'
 ```
 
-**Output:** each writes a timestamped CSV to the current folder or `-OutputPath`.
+**Output:** a timestamped CSV in the current folder or `-OutputPath`.
 
 ### `Permissions/Get-SiteOwnerStatus.ps1`
+
+A site whose only owner has left the company is not an edge case in a tenant this
+size; it is a steady background rate. Nothing breaks when it happens, which is
+exactly the problem — the site keeps serving its content, keeps consuming pooled
+storage, and there is no longer anybody with the standing to answer a question
+about it or approve its deletion. No standard report surfaces this, because the
+three facts you need live in three different places: group-connected sites keep
+their owners in the Microsoft 365 group, non-group sites keep theirs in a
+SharePoint group that Graph `/groups` cannot see at all, and `accountEnabled`
+lives in Entra.
+
+Joining those three is most of what this script does. The care went into the
+failure cases, because this output is what decommissioning decisions get made on,
+and a report that is wrong in a plausible-looking way is more dangerous than one
+that fails outright.
 
 Answers "who actually owns this site, and do they still work here?" — the question you hit the
 moment you try to clean up storage or decommission sites. It resolves owners differently by site
@@ -103,6 +163,21 @@ Two behaviours worth knowing:
   quota-based export and join on `SiteUrl`; this script supplies the owners.
 
 ### `Permissions/Get-EveryoneExceptExternalGrant.ps1`
+
+"Everyone except external users" is SharePoint's way of saying "the whole
+company". Granting it is sometimes exactly right — an intranet, a policy library,
+anything meant to be readable by all staff — and sometimes it is what happens when
+a site gets shared in a hurry, after which a finance folder is readable by every
+licensed user in the tenant and no error is ever raised. Nobody stumbles onto that
+by browsing. You find it by scanning for the principal, or you do not find it.
+
+The design decision that carries this script — matching on the login claim rather
+than the display name — is written up below, and it is a lesson learned rather
+than foresight. A previous version lost the claim check and compared display
+titles only, and it returned clean reports for sites that did have EEEU grants
+sitting on them. A permissions scanner with false negatives is worse than no
+scanner at all, because a green result is precisely what stops anyone from looking
+again.
 
 Finds direct grants to **"Everyone except external users"** (EEEU) — the claim that quietly makes
 content readable by every licensed user in the tenant. Scans site and list/library level; per-item
@@ -136,43 +211,21 @@ scanning is opt-in with `-ScanItems` because it is slow on large sites.
 > list is kept only as a secondary signal. If you fork this for another built-in principal, match
 > its claim, not its label.
 
-### `Lifecycle/analyze_site_cleanup.py`
-
-Takes a tenant "inactive sites" policy report — which tells you a site is idle but not who owns it —
-and attributes each site to a country or business unit, so the list can actually be actioned.
-
-Attribution runs in priority order: an **Entra user export** (owner email → `usageLocation`) first,
-a **keyword match** on site name/URL only when no owner can be resolved, and otherwise `Unattributed`.
-Every row records *which* method produced it, so a reviewer can tell a hard match from a guess.
-Sites owned solely by an exempt entity are preserved and listed separately.
-
-All business rules live outside the script in a JSON file — copy
-[`Lifecycle/site-cleanup-rules.example.json`](Lifecycle/site-cleanup-rules.example.json) and edit it
-for your tenant.
-
-```bash
-cp site-cleanup-rules.example.json site-cleanup-rules.json
-
-python analyze_site_cleanup.py \
-    --inactive-report ./inactive-sites.csv \
-    --entra-export    ./entra-users.csv \
-    --sites-report    ./sites.csv \
-    --rules           ./site-cleanup-rules.json \
-    --outdir          ./Exports
-```
-
-**Input:** CSV exports (inactive-site policy report, Entra user export with `usageLocation` /
-`companyName` / `accountEnabled`, current site inventory) plus the rules file.
-**Output:** an `.xlsx` with a dashboard, per-group tabs, `Unattributed` and `Exempt` tabs, plus a master CSV.
-**Permissions:** none — it reads files you have already exported and never contacts SharePoint.
-
-> **Deletion candidates are not a deletion list.** Everything this produces is a *proposal* for human
-> review. Keyword-attributed rows in particular are informed guesses. Never feed the output
-> straight into a deletion script.
-
 ## Scripts that change state
 
 ### `Storage/Set-SiteStorageQuota.ps1`
+
+Raising a quota is a one-line change, and the reason it deserves a script is what
+happens afterwards. The original version changed the quota and did not record what
+it had been, so the only route back was somebody's recollection of a number in
+megabytes. It also had no `-WhatIf`, which meant this one script broke the
+convention every other script here follows. Both were added, and the safeguards
+below are the result — none of them clever, all of them missing at first.
+
+The `unknown` in the note below is the same principle as the tri-state
+`accountEnabled` above, and it is the thread that runs through this repository: a
+quota that could not be read is recorded as unread, because `0` looks like a
+value somebody could roll back to, and eventually somebody would.
 
 Sets the storage quota on one or more site collections. Run `Get-SiteStorage.ps1` first and confirm
 the exact URLs from its output.
@@ -198,6 +251,22 @@ the exact URLs from its output.
 > Raising quota consumes tenant-pooled storage, so get whatever approval your storage policy requires.
 
 ### `Storage/Send-StorageNotification.ps1`
+
+The end of the storage chain. `Get-SiteStorage.ps1` finds the sites over
+threshold, `Get-SiteOwnerStatus.ps1` says who owns them, and this is the part that
+asks those owners to do something about it — the weekly follow-up, driven from the
+tracker workbook so the state of each conversation stays with the people having it
+rather than inside a script.
+
+The decision worth pausing on is the permission, not the code. `Mail.Send` as an
+application permission, granted the ordinary way, lets the app send as *any*
+mailbox in the tenant — a reporting job with the standing to impersonate the
+finance director. Scoping it with an Exchange Application Access Policy to the
+single sender mailbox is what turns that into something proportionate, and it is
+the sort of constraint nobody notices is missing, because the script works
+identically either way. The other decision, signing the token by hand instead of
+using the Graph SDK, is explained below; it is a workaround for an assembly
+conflict, not a preference.
 
 Emails the owners of sites still over their storage threshold, driven by a tracker workbook.
 Authenticates app-only by signing a JWT client assertion with the certificate and calling the Graph
@@ -227,6 +296,20 @@ header row is auto-detected, so decorative banner rows above it do not break par
 > Use `-WhatIf` and read the log before every live run — there is no unsend.
 
 ### `Lifecycle/Restore-OneDriveFolder.ps1`
+
+This is recovery work, and it arrives urgent: someone synced a library, tidied up
+what they thought was a local copy, and took a folder tree with them. The
+first-stage recycle bin still holds everything, so the data is not gone — but
+"restore everything" is the wrong answer when the accidental deletion happened in
+the middle of a legitimate cleanup, and restoring a few thousand items by hand
+through the web UI is not an answer at all.
+
+So the unit of work is a path subtree, and it is worth being clear that
+`-PathFilter` is the only real safeguard here: it is the whole of what stands
+between restoring one folder and dumping half a library back into a live site.
+That is why it reports before it acts, and why neither it nor `-SiteUrl` has a
+default — the script is usually pointed at somebody else's content, under time
+pressure, by someone who has already had a bad morning.
 
 Bulk-restores a deleted folder subtree from a site's or OneDrive's first-stage recycle bin, for
 mass-delete recovery. Reports first: item count, total size, deletion date range, and who deleted
