@@ -10,11 +10,11 @@
     #  Consumed by:
     #    Platforms/EntraID/Applications/Update-AppContact.ps1
     #    Platforms/EntraID/Identity/Get-MissingLocationReport.ps1
-    #    Platforms/EntraID/ConditionalAccess/classify_exceptions_by_country.py
     #
     #  Format note: keep this file to plain hashtables and string arrays with
-    #  single-quoted values. The Python consumer parses that subset directly and
-    #  does not evaluate PowerShell.
+    #  single-quoted values, and no expressions. That subset can be parsed by a
+    #  non-PowerShell reader without evaluating the file, which is worth
+    #  preserving if this mapping is ever consumed from another language.
     # ===========================================================================
 
     # ---------------------------------------------------------------------------
