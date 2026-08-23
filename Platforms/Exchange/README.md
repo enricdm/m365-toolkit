@@ -1,0 +1,522 @@
+# Exchange Online
+
+Operational PowerShell for Exchange Online recipient management: distribution and
+security groups, shared mailboxes and calendars, mail flow protection, and room
+resources. These are the scripts behind everyday service-desk requests — "create
+this fax list", "who can book this room", "block this domain" — written so the
+work is repeatable, previewable, and leaves an artefact behind.
+
+Two conventions run through all of them:
+
+- **Dry run is the default.** Every script that writes previews what it would do
+  and changes nothing until you pass `-Execute`.
+- **Everything exports.** Results go to a timestamped CSV under `Exports/` (or
+  `Evidence/`, `logs/`) next to the script, so there is a record of what was done
+  and to whom.
+
+Example values are placeholders (`contoso.com`, `<tenant-id>`, `<client-id>`).
+Nothing needs editing inside a file to run it in your own tenant.
+
+## Index
+
+| Script | What it does | Changes state | Auth |
+|---|---|:---:|---|
+| [`Groups/Edit-MailGroupMember.ps1`](Groups/Edit-MailGroupMember.ps1) | Adds/removes members on existing groups; auto-creates MailContacts for external addresses | **Yes** | interactive (pre-existing EXO session) |
+| [`Groups/New-FaxDistributionList.ps1`](Groups/New-FaxDistributionList.ps1) | Provisions a fax-to-mail DL with unauthenticated relay allowed, and verifies it | **Yes** | interactive (pre-existing EXO session) |
+| [`Groups/New-MailGroup.ps1`](Groups/New-MailGroup.ps1) | Creates a DL, mail-enabled security group, or M365 group from a member CSV | **Yes** | interactive (+ Graph for M365 groups) |
+| [`Mailboxes/New-SharedCalendar.ps1`](Mailboxes/New-SharedCalendar.ps1) | Provisions a shared team calendar with group-based Editor access | **Yes** | app-only cert **or** interactive |
+| [`Mailboxes/New-SharedMailbox.ps1`](Mailboxes/New-SharedMailbox.ps1) | Creates a shared mailbox and grants FullAccess + SendAs from a CSV | **Yes** | interactive (pre-existing EXO session) |
+| [`Mailboxes/Set-MailboxForwarding.ps1`](Mailboxes/Set-MailboxForwarding.ps1) | Sets server-side forwarding on one or more mailboxes | **Yes** | interactive (pre-existing EXO session) |
+| [`MailFlow/Block-MaliciousDomain.ps1`](MailFlow/Block-MaliciousDomain.ps1) | Blocks a domain in the Tenant Allow/Block List as Sender and URL | **Yes** | interactive (reuses an existing session) |
+| [`MailFlow/Test-PhishingSimulationRule.ps1`](MailFlow/Test-PhishingSimulationRule.ps1) | Traces both legs of a phishing-report transport rule and writes an evidence report | No | interactive |
+| [`MailFlow/Get-ProofpointLiteEligibility.ps1`](MailFlow/Get-ProofpointLiteEligibility.ps1) | Splits mailboxes above/below a mail-volume threshold for per-mailbox licensing | No | Graph, `Reports.Read.All` |
+| [`Resources/Get-CountryResource.ps1`](Resources/Get-CountryResource.ps1) | Finds room/equipment mailboxes for a country across several weak signals | No | app-only cert **or** interactive |
+| [`Resources/Set-RoomMailbox.ps1`](Resources/Set-RoomMailbox.ps1) | Configures a room mailbox: booking policy, place metadata, who may reserve it | **Yes** | interactive |
+
+## Requirements
+
+- **PowerShell 7.0+** — required by `Get-CountryResource.ps1` and
+  `Set-RoomMailbox.ps1`; recommended for the rest.
+- **ExchangeOnlineManagement 3.0+** (`Install-Module ExchangeOnlineManagement`).
+  `Test-PhishingSimulationRule.ps1` needs **3.7+** for `Get-MessageTraceV2`.
+- **Microsoft.Graph.Reports** — only for `Get-ProofpointLiteEligibility.ps1`
+  (`Install-Module Microsoft.Graph.Reports -Scope CurrentUser`).
+
+Roles and permissions:
+
+| Need | Used by |
+|---|---|
+| Exchange **Recipient Administrator** | the group, shared mailbox and forwarding scripts |
+| Exchange **Administrator** | `New-SharedCalendar.ps1`, `Set-RoomMailbox.ps1` (`New-Mailbox`, `Set-CalendarProcessing`, `Set-Place`) |
+| **Security Administrator** (or Organization Management) | `Block-MaliciousDomain.ps1` — Tenant Allow/Block List writes |
+| **View-Only Recipients** / message trace read | the two read-only MailFlow and Resources scripts |
+| Graph `Reports.Read.All` (admin consent) | `Get-ProofpointLiteEligibility.ps1` |
+
+### App-only certificate auth
+
+`New-SharedCalendar.ps1` and `Get-CountryResource.ps1` can run unattended. Register
+an app in Entra ID, give it the `Exchange.ManageAsApp` application permission, grant
+it the **Exchange Administrator** directory role, and upload a certificate. Then
+either pass the three values or set the environment variables the parameters
+default to:
+
+```powershell
+$env:EXO_APPID     = '<client-id>'
+$env:EXO_CERTTHUMB = '<cert-thumbprint>'
+$env:EXO_ORG       = 'contoso.onmicrosoft.com'
+```
+
+Both scripts require **all three** or **none**. A partial configuration is rejected
+rather than silently falling back to interactive — that is how you end up believing
+a scheduled run was unattended when it was not. Every other script authenticates
+interactively with the signed-in account.
+
+---
+
+## `Groups/`
+
+The three group scripts share one pattern, learned the hard way:
+
+1. **Validate before writing** — resolve every member and check the address is not
+   already taken, because a half-created group is worse than no group.
+2. **Create the group.**
+3. **Wait for directory replication** (`Start-Sleep`) before touching it again.
+   The follow-up cmdlet will fail against a group that exists but has not
+   propagated yet.
+4. **Add members with `-BypassSecurityGroupManagerCheck`.** Without it, an admin
+   who is not listed in `ManagedBy` cannot modify the group they just created.
+5. **Verify** the resulting object against what was asked for.
+
+[`New-FaxDistributionList.ps1`](Groups/New-FaxDistributionList.ps1) is the
+**reference implementation** of that pattern — it is the only one that does all
+five steps, including an exportable preflight and a post-provisioning check of the
+live object. Read that one first; the other two are lighter variants.
+
+### `Groups/New-FaxDistributionList.ps1`
+
+Provisions a fax-to-mail distribution list. Fax gateways are the awkward case:
+they relay **unauthenticated**, so the Exchange default
+`RequireSenderAuthenticationEnabled = $true` silently drops every inbound fax with
+no NDR the requester ever sees. This script disables that explicitly and refuses to
+finish if the live object comes back with a different value than was asked for.
+
+It also checks address collisions before creating anything, resolves every member
+in a preflight pass exported to CSV (so the requester can confirm the list before
+it exists), creates MailContacts for external members, and diffs the final
+membership against what was requested.
+
+```powershell
+# Preview: resolves owner and every member, writes the preflight CSV, changes nothing
+.\Groups\New-FaxDistributionList.ps1 -GroupName 'DE.CTY.Example-Fax' `
+    -DisplayName 'Fax, Example Site' -PrimarySmtp 'Example-Fax@contoso.com' `
+    -Owner 'owner@contoso.com' -Members 'first.user@contoso.com','second.user@contoso.com'
+
+# Apply, with a legacy alias a pre-staged gateway still delivers to
+.\Groups\New-FaxDistributionList.ps1 -GroupName 'DE.CTY.Example-Fax' `
+    -DisplayName 'Fax, Example Site' -PrimarySmtp 'Example-Fax@contoso.com' `
+    -Owner 'owner@contoso.com' -AliasAddresses 'Example.Fax@contoso.com' `
+    -Reference 'CHG-0001' -Execute
+```
+
+**Input:** parameters only. An existing `Connect-ExchangeOnline` session.
+**Output:** `Exports/FaxDL-Preflight-*.csv` on a dry run; `FaxDL-Object-*.csv` and
+`FaxDL-Members-*.csv` after `-Execute`.
+**Permissions:** Exchange Recipient Administrator.
+
+> **Writes:** creates a distribution group, MailContacts for external members, and
+> adds members. Safeguards: dry run by default; aborts if the primary SMTP, any
+> alias, or the group name is already in use; aborts if the owner does not resolve;
+> post-run verification fails loudly if `RequireSenderAuthenticationEnabled` does
+> not match what was requested. Rollback is a single
+> `Remove-DistributionGroup -Identity '<GroupName>' -Confirm:$false`.
+>
+> **Known wart:** the final "missing members" diff compares the addresses you
+> passed against each member's *primary* SMTP. Request someone by an alias and they
+> are reported `MISSING` even though they were added correctly.
+
+### `Groups/New-MailGroup.ps1`
+
+One script for the three group types — distribution list, mail-enabled security
+group, or Microsoft 365 group — chosen from a prompt at runtime. External addresses
+get a MailContact created first (DL and SG only; M365 groups do not take them), and
+sender restrictions are applied after the members are in.
+
+```powershell
+# Preview from a member CSV (column 'Email' or 'Member')
+.\Groups\New-MailGroup.ps1 -GroupName 'CC.CITY.Example' `
+    -PrimarySmtp 'CC.CITY.Example@contoso.com' -Owner 'owner@contoso.com' `
+    -CsvPath .\members.csv
+
+# Apply, restricting who may send to the group
+.\Groups\New-MailGroup.ps1 -GroupName 'CC.CITY.Example' `
+    -PrimarySmtp 'CC.CITY.Example@contoso.com' -Owner 'owner@contoso.com' `
+    -CsvPath .\members.csv -AllowedSenders 'owner@contoso.com' -Execute
+```
+
+**Input:** a one-column CSV of addresses; an existing EXO session; for M365 groups
+also `Connect-MgGraph -Scopes "Group.ReadWrite.All"`.
+**Output:** console only — verification listing of the group and its members.
+**Permissions:** Exchange Recipient Administrator.
+
+> **Writes:** creates a group, creates MailContacts, adds members, applies sender
+> restrictions. Safeguards: dry run by default; existing contacts and guest/mail
+> users are reused instead of duplicated; per-member failures are reported and do
+> not stop the run.
+>
+> **Known defects, not fixed:** the group type comes from an interactive
+> `Read-Host`, so the script cannot run unattended. It does **not** check for an
+> address collision before creating (unlike `New-FaxDistributionList.ps1`). After
+> creation it sleeps a fixed 10 seconds and hopes replication has caught up.
+> `Ensure-MailContact` uses an unapproved PowerShell verb.
+
+### `Groups/Edit-MailGroupMember.ps1`
+
+Membership changes on groups that already exist — no creation, no sender-restriction
+logic. Group type is auto-detected per group (`Add/Remove-DistributionGroupMember`
+vs `Add/Remove-UnifiedGroupLinks`), external addresses that do not exist yet get a
+MailContact, and removing someone who is already absent is treated as success, so
+the script is safe to re-run and tolerates changes the requester already made by
+hand.
+
+Edit the `$Jobs` list at the top of the file: one entry per group, each with its
+own `Add` and `Remove` sets.
+
+```powershell
+# Preview every job
+.\Groups\Edit-MailGroupMember.ps1
+
+# Apply, treating two domains as internal (no MailContact auto-creation for them)
+.\Groups\Edit-MailGroupMember.ps1 -InternalDomains 'contoso.com','contoso.co.uk' -Execute
+```
+
+**Input:** the `$Jobs` list inside the script; an existing EXO session.
+**Output:** `logs/Edit-MailGroupMember-<timestamp>.csv` — one row per action, always
+written, including on a dry run.
+**Permissions:** Exchange Recipient Administrator.
+
+> **Writes:** adds and removes group members, and creates MailContacts for unknown
+> external addresses. Safeguards: dry run by default; current membership is read
+> first so no-op adds and removes are skipped rather than attempted; an internal
+> address that does not resolve is reported as a probable typo and skipped instead
+> of having a contact created for it; a group that cannot be resolved is skipped,
+> not fatal.
+>
+> **Known wart:** the job list lives in the file rather than in a parameter or CSV,
+> so running it means editing it.
+
+---
+
+## `Mailboxes/`
+
+### `Mailboxes/New-SharedCalendar.ps1`
+
+Provisions a shared team calendar. The access model is the point: instead of
+stamping folder permissions per person, one mail-enabled **security** group
+(`MB_<alias>_Kalender_Editor`) is granted Editor once on the calendar folder, and
+people are managed as members of that group. Day-to-day membership changes then
+never touch the mailbox.
+
+It resolves the real calendar folder name rather than assuming `\Calendar` — a
+mailbox with German regional settings has `\Kalender`, and that is the single most
+common reason a calendar permission script fails. It also verifies the access group
+is actually security-enabled, because folder permissions granted to a plain
+distribution list reach nobody.
+
+```powershell
+# Preview, and dump a known-good calendar's config to compare against
+.\Mailboxes\New-SharedCalendar.ps1 -ReferenceMailbox shared.DE.CTY.Other-Team@contoso.com
+
+# Apply, cloud-only, stamping each person directly instead of via a group
+.\Mailboxes\New-SharedCalendar.ps1 -Alias 'shared.DE.CTY.Example-Team' `
+    -DisplayName 'DE.CTY.SHARED Example-Team' `
+    -Members 'first.user@contoso.com','second.user@contoso.com' `
+    -CreateMailbox -DirectGrant -Execute
+```
+
+**Input:** parameters. App-only credentials or an interactive sign-in.
+**Output:** `Exports/SharedCalendar_<alias>_<timestamp>.csv` — every action with its
+status, plus the resulting folder permissions on screen.
+**Permissions:** Exchange Administrator.
+
+> **Writes:** optionally creates the shared mailbox, sets regional configuration,
+> adds members to the access group, and sets calendar folder permissions (Default =
+> `AvailabilityOnly`, the group or each user = Editor). Optionally grants
+> FullAccess with AutoMapping. Safeguards: dry run by default; every action goes
+> through one wrapper that logs a `DRY-RUN`/`OK`/`FAIL` status; refuses to use an
+> access group that is not security-enabled and says why; warns when the group is
+> directory-synced and membership must be changed on-prem instead.
+>
+> **Known limitation:** mail-enabled security groups can no longer be created in
+> Exchange Online, so `-CreateAccessGroup` will usually fail. In a hybrid tenant,
+> create the group in on-prem AD and let it sync; in a cloud-only tenant, use
+> `-DirectGrant`.
+
+### `Mailboxes/New-SharedMailbox.ps1`
+
+Creates a shared mailbox and grants FullAccess + SendAs to everyone in a CSV.
+External addresses are skipped for mailbox permissions with an explanation rather
+than failing silently — Exchange cannot grant mailbox rights to a non-tenant
+identity, and that surprises requesters every time.
+
+```powershell
+# Preview
+.\Mailboxes\New-SharedMailbox.ps1 -MailboxName 'Team.Inbox' `
+    -PrimarySmtp 'team.inbox@contoso.com' -CsvPath .\members.csv
+
+# Apply without AutoMapping, so users add the mailbox themselves
+.\Mailboxes\New-SharedMailbox.ps1 -MailboxName 'Team.Inbox' `
+    -DisplayName 'Team Inbox' -PrimarySmtp 'team.inbox@contoso.com' `
+    -CsvPath .\members.csv -AutoMapping $false -Execute
+```
+
+**Input:** a one-column CSV (`Email` or `Member`); an existing EXO session.
+**Output:** console summary of granted, skipped and failed, plus a verification
+listing of the resulting permissions.
+**Permissions:** Exchange Recipient Administrator.
+
+> **Writes:** creates a shared mailbox and grants FullAccess + SendAs. Safeguards:
+> dry run by default; skips creation if the mailbox already exists, so a re-run only
+> tops up permissions; FullAccess and SendAs are granted independently so one
+> failing does not hide the other; external addresses are skipped with a warning.
+
+### `Mailboxes/Set-MailboxForwarding.ps1`
+
+Sets server-side forwarding on one or more mailboxes.
+
+> ### ⚠ Read this before using it
+>
+> Server-side forwarding to an external address is **the exact mechanism attackers
+> configure after a Business Email Compromise**, and it is the first thing an
+> incident responder looks for. Setting it deliberately means creating the artefact
+> that a BEC investigation hunts. Only run it against a written, approved request,
+> keep the exported CSV as the record that IT configured it, prefer an internal
+> target, and remove the forward when the reason for it ends.
+
+The script enforces that in code: if the target domain is **not an accepted domain
+of the tenant**, it refuses to apply anything unless you also pass
+`-AllowExternalTarget`. The dry run tells you in advance that the switch will be
+required. If the accepted-domain list cannot be read at all, the target is treated
+as external — failing safe rather than assuming.
+
+```powershell
+# Preview - internal target, no extra switch needed
+.\Mailboxes\Set-MailboxForwarding.ps1 `
+    -SourceMailboxes 'user.one@contoso.com','user.two@contoso.com' `
+    -ForwardTo 'shared.inbox@contoso.com'
+
+# Apply to an external target - requires the explicit confirmation switch
+.\Mailboxes\Set-MailboxForwarding.ps1 -SourceMailboxes 'user.one@contoso.com' `
+    -ForwardTo 'someone@fabrikam.com' -AllowExternalTarget -Execute
+```
+
+**Input:** parameters; an existing EXO session.
+**Output:** `Exports/MailboxForwarding_<timestamp>.csv` — previous and new forward
+per mailbox, and whether the target was external. Keep it.
+**Permissions:** Exchange Recipient Administrator.
+
+> **Writes:** sets `ForwardingSMTPAddress` and `DeliverToMailboxAndForward`.
+> Safeguards: dry run by default; external targets are blocked behind
+> `-AllowExternalTarget`; the previous value of both settings is captured before
+> the change so the CSV is a rollback plan; every change is read back and verified;
+> `-KeepCopyInMailbox` defaults to `$true` so mail stays discoverable in the source
+> mailbox, and a warning fires if it is turned off for an external target. To undo:
+> `Set-Mailbox -Identity '<mailbox>' -ForwardingSMTPAddress $null -DeliverToMailboxAndForward $false`.
+>
+> Note that many tenants block external auto-forwarding at the outbound spam policy.
+> This script will report success while the policy quietly drops the forwarded mail —
+> check the policy, not just the mailbox attribute.
+
+---
+
+## `MailFlow/`
+
+### `MailFlow/Block-MaliciousDomain.ps1`
+
+Blocks a domain in the Tenant Allow/Block List as **both** a Sender and a URL entry.
+Both matter: a Sender block stops mail claiming to come from the domain, but does
+nothing about a link to it inside a message arriving from somewhere else. Most
+phishing needs both.
+
+`-Domain` is mandatory and has deliberately no default — a default here would mean
+shipping someone's indicator of compromise inside the script.
+
+```powershell
+# Dry run
+.\MailFlow\Block-MaliciousDomain.ps1 -Domain 'malicious.example'
+
+# Apply the URL entry only, with a change reference on the entry
+.\MailFlow\Block-MaliciousDomain.ps1 -Domain 'malicious.example' -ListType Url `
+    -Notes 'Phishing campaign, ref 12345' -Execute
+```
+
+**Input:** parameters. Connects on its own, reusing an existing session if there is
+one.
+**Output:** `Exports/TABL-Block_<domain>_<timestamp>.csv`.
+**Permissions:** Security Administrator (or Organization Management).
+
+> **Writes:** creates Tenant Allow/Block List block entries with no expiration.
+> Safeguards: dry run by default; checks each list for an existing entry first and
+> skips rather than duplicating; re-reads both entries after writing to confirm
+> they exist; per-list failures are recorded and do not abort the other list.
+>
+> Entries are created with `-NoExpiration` — they stay until someone removes them.
+> Remove with `Remove-TenantAllowBlockListItems`.
+
+### `MailFlow/Test-PhishingSimulationRule.ps1`
+
+Read-only. Proves whether the transport rule that forwards user-reported phishing to
+the simulation vendor is actually firing, by tracing **both legs**: inbound to the
+trap mailbox, and outbound to the vendor address the rule adds as a recipient. A
+rule that exists in the policy is not a rule that works — only the outbound leg
+proves it. Produces a CSV plus a short text evidence report you can attach to a
+change record.
+
+```powershell
+.\MailFlow\Test-PhishingSimulationRule.ps1 `
+    -TrapMailbox 'phishing.report@contoso.com' `
+    -SimulationReportAddress 'reports@simulation-vendor.example' -DaysBack 7
+```
+
+**Input:** parameters; connects on its own.
+**Output:** `Evidence/MessageTrace_<timestamp>.csv` and
+`Evidence/EvidenceReport_<timestamp>.txt`.
+**Permissions:** message trace read (View-Only Recipients / Security Reader).
+
+> **Known limitations:** message trace only retains roughly 10 days, so a larger
+> `-DaysBack` silently returns nothing for the older part of the range. The script
+> calls `Disconnect-ExchangeOnline` when it finishes, which will also close a
+> session you had open before running it.
+
+### `MailFlow/Get-ProofpointLiteEligibility.ps1`
+
+Read-only. Counts mail received per mailbox over a period and splits the tenant into
+"under the threshold" and "at or over it" — the input a per-mailbox mail-security
+licensing decision needs.
+
+The interesting part is the data source. The obvious approach is one
+`Get-MessageTraceV2` per mailbox, which means thousands of calls, pagination,
+rate-limit handling, and a ceiling of about 10 days of history. This uses the Graph
+*Email Activity User Detail* report instead: **one** API call returns per-mailbox
+receive counts aggregated server-side for D7/D30/D90/D180 — seconds instead of
+minutes, reaching back 180 days, and matching the M365 admin center exactly, so the
+numbers can be reconciled against the portal instead of argued about.
+
+```powershell
+# Default: 30-day window, threshold 150
+.\MailFlow\Get-ProofpointLiteEligibility.ps1
+
+# Longer window and a different threshold, to a chosen file
+.\MailFlow\Get-ProofpointLiteEligibility.ps1 -Period D180 -MailThreshold 100 `
+    -ExportCsvPath .\Exports\eligibility-D180.csv
+```
+
+**Input:** a Graph session (it connects and requests the scope if needed).
+**Output:** a CSV of every mailbox with its receive count and eligibility flag, plus
+an on-screen summary and the top 10 highest-volume mailboxes.
+**Permissions:** Graph `Reports.Read.All` (admin consent required).
+
+> **Known limitations:** Graph usage data lags real time by about two days — the
+> admin center report has the same lag, which is fine for a licensing decision.
+> If the tenant has *Concealed names* enabled, UPNs come back hashed; counts stay
+> valid but cannot be mapped to users. The script detects this and tells you which
+> setting to turn off.
+
+---
+
+## `Resources/`
+
+### `Resources/Get-CountryResource.ps1`
+
+Read-only. Finds room and equipment mailboxes belonging to a country.
+
+In a tenant that grew by acquisition, resource mailboxes are named every possible
+way and the origin marker in `extensionAttribute12` is only populated on some of
+them. Filtering on any single signal misses rooms. This ORs several weak signals
+together — marker, usage location, country token anywhere in the display name, full
+country name, address convention, plus any extra pattern you pass — and reports a
+`MatchedBy` column showing which ones fired, so you can see how sparse the marker
+actually is instead of trusting it.
+
+`-CheckAddress` additionally reports whether proposed addresses are already in use
+across **all** recipient types, not just resources. That is the check you run before
+proposing new room addresses.
+
+```powershell
+# All rooms and equipment for a country
+.\Resources\Get-CountryResource.ps1 -Country HU
+
+# Rooms only, plus an in-use check on proposed addresses, in one pass
+.\Resources\Get-CountryResource.ps1 -Country HU -ResourceType Room -CheckAddress `
+    'RESHU.MR.RoomOne@contoso.com','RESHU.MR.RoomTwo@contoso.com'
+```
+
+**Input:** parameters. `-MarkerPrefix`, `-AddressPrefix` and `-Domain` are the
+organisation-specific tokens; the defaults are placeholders, so set them to your own
+conventions.
+**Output:** `Exports/Resources_<CC>_<timestamp>.csv`, and
+`Exports/AddressCheck_<CC>_<timestamp>.csv` when `-CheckAddress` is used.
+**Permissions:** View-Only Recipients.
+
+### `Resources/Set-RoomMailbox.ps1`
+
+Configures a room mailbox: place metadata for Room Finder, an auto-accept booking
+policy, and who is allowed to use it. Two access models:
+
+- **Booking** (default) — restricts *who may reserve* the room via `BookInPolicy`.
+  Groups go in as-is, because Exchange evaluates their membership at request time;
+  the restriction then survives staff changes without re-running anything.
+- **Manage** — grants Editor on the room's calendar folder, for people who need to
+  fix up other people's bookings.
+
+The trap in Manage mode is that folder permissions do **not** reach the members of a
+distribution list. The script detects it, refuses to pretend it worked, and offers
+`-ExpandGroups`, which recursively flattens groups and shared mailboxes to
+individuals with a cycle guard.
+
+```powershell
+# Preview: who would be allowed to book the room
+.\Resources\Set-RoomMailbox.ps1 -RoomName 'Room 1.01' `
+    -Managers 'reception@contoso.com','Example Team Leads'
+
+# Manage mode, flattening the DL to its members, applied
+.\Resources\Set-RoomMailbox.ps1 -RoomName 'Room 1.01' -CityCode 'CTY' -SiteCode 'SITE' `
+    -Managers 'Example Team Leads' -Mode Manage -ExpandGroups -Execute
+```
+
+**Input:** parameters; connects interactively. `-PrimarySmtp` is derived from the
+country/city/site codes and room name unless you pass it explicitly — and if what
+you pass disagrees with the derived alias, the script warns rather than provisioning
+a room whose address contradicts its name.
+**Output:** `Exports/RoomMailbox_<alias>_<timestamp>.csv` and a full transcript
+`.log` beside it.
+**Permissions:** Exchange Administrator.
+
+> **Writes:** optionally creates the room mailbox (`-CreateInCloud`), sets place
+> metadata, sets the calendar processing policy, and either restricts `BookInPolicy`
+> or grants Editor on the calendar folder. Safeguards: dry run by default, with every
+> action routed through one wrapper that prints `would:` instead of acting; refuses
+> to apply an **empty** `BookInPolicy`, which would auto-decline every request from
+> everyone; run-level deduplication so a person reached through two groups is granted
+> once; group expansion is cycle-guarded; dynamic distribution groups are reported as
+> not expandable rather than silently ignored.
+
+---
+
+## A note on architecture
+
+The group scripts in `Groups/` are largely the same script more than once. They
+differ in which validations they perform and how much they verify afterwards, not
+in what they fundamentally do: resolve members, create a group, wait for
+replication, add members, verify.
+
+They should be one script with a `-Type Distribution|Security|M365` parameter,
+built on `New-FaxDistributionList.ps1`'s validation and verification, with the
+fax-specific mail flow handling behind a switch. That would remove the real problem
+here, which is not duplication but **drift**: `New-MailGroup.ps1` has no address
+collision check, and `Edit-MailGroupMember.ps1` keeps its work list inside the file.
+Fixes applied to one have not reached the others.
+
+They are published as they are because that is how they were written under service
+requests — one script per request, each improving on the last. The consolidation is
+the obvious next step, and knowing that is worth more than pretending it is already
+done.

@@ -1,0 +1,152 @@
+#requires -Modules ExchangeOnlineManagement
+<#
+.SYNOPSIS
+    Blocks a malicious domain in the Exchange Online Tenant Allow/Block List (TABL)
+    as both a Sender domain and a URL entry.
+
+.DESCRIPTION
+    Adds block entries to the Tenant Allow/Block List for a phishing/malware domain.
+    Checks for existing entries before writing (no duplicates), verifies after, and
+    logs results to Exports/. Defaults to a DRY RUN; pass -Execute to apply changes.
+
+    Blocking as BOTH Sender and Url matters: a Sender block stops mail claiming to
+    come from the domain, but does nothing about a link to it inside a message that
+    arrives from somewhere else. Most phishing needs both entries.
+
+.PARAMETER Domain
+    Domain to block, without protocol. Mandatory - there is deliberately no default,
+    because a default here would mean shipping someone's indicator of compromise
+    inside the script.
+
+.PARAMETER ListType
+    Which TABL list(s) to write. Default: both Sender and Url.
+
+.PARAMETER Notes
+    Free-text note stored on each TABL entry. Use it for the change reference.
+
+.PARAMETER AdminUpn
+    UPN to connect with. Optional - omit it to let Connect-ExchangeOnline prompt,
+    or to reuse an existing session.
+
+.PARAMETER Execute
+    Apply changes. Without this switch the script runs in dry-run mode.
+
+.EXAMPLE
+    .\Block-MaliciousDomain.ps1 -Domain 'malicious.example'
+    Dry run (shows what would be blocked).
+
+.EXAMPLE
+    .\Block-MaliciousDomain.ps1 -Domain 'malicious.example' -ListType Url `
+        -Notes 'Phishing campaign, ref 12345' -Execute
+    Creates the Url block entry only.
+#>
+
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)]
+    [ValidatePattern('^[A-Za-z0-9]([A-Za-z0-9\-\.]*[A-Za-z0-9])?\.[A-Za-z]{2,}$')]
+    [string]   $Domain,
+    [ValidateSet('Sender', 'Url')]
+    [string[]] $ListType = @('Sender', 'Url'),
+    [string]   $Notes = 'Phishing/malware domain - blocked by IT',
+    [string]   $AdminUpn = '',
+    [switch]   $Execute
+)
+
+# --- Helpers -------------------------------------------------------------
+function Write-Step { param([string]$m) Write-Host "[*] $m" -ForegroundColor Cyan }
+function Write-OK { param([string]$m) Write-Host "[+] $m" -ForegroundColor Green }
+function Write-Warn { param([string]$m) Write-Host "[!] $m" -ForegroundColor Yellow }
+function Die { param([string]$m) Write-Host "[x] $m" -ForegroundColor Red; exit 1 }
+
+# --- Setup ---------------------------------------------------------------
+$ExportDir = Join-Path $PSScriptRoot 'Exports'
+if (-not (Test-Path $ExportDir)) { New-Item -ItemType Directory -Path $ExportDir | Out-Null }
+$Stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$LogPath = Join-Path $ExportDir ("TABL-Block_{0}_{1}.csv" -f ($Domain -replace '\.', '_'), $Stamp)
+
+if (-not $Execute) { Write-Warn 'DRY RUN - no changes will be made. Re-run with -Execute to apply.' }
+
+# --- Connect -------------------------------------------------------------
+# Get-ConnectionInformation does NOT throw when there is no session - it returns
+# nothing. Testing it with try/catch therefore always lands in the "reuse" branch
+# and the script announces a session it does not have, only to fail later on the
+# first real cmdlet. Inspect the returned object instead.
+Write-Step 'Checking for an existing Exchange Online session'
+$existingSession = @(Get-ConnectionInformation -ErrorAction SilentlyContinue |
+    Where-Object { $_.State -eq 'Connected' -and $_.TokenStatus -ne 'Expired' })
+
+if ($existingSession.Count -gt 0) {
+    Write-OK "Reusing existing Exchange Online session ($($existingSession[0].UserPrincipalName))."
+} else {
+    Write-Step "Connecting to Exchange Online$(if ($AdminUpn) { " as $AdminUpn" })"
+    try {
+        $connectArgs = @{ ShowBanner = $false; ErrorAction = 'Stop' }
+        if ($AdminUpn) { $connectArgs['UserPrincipalName'] = $AdminUpn }
+        Connect-ExchangeOnline @connectArgs
+        Write-OK 'Connected to Exchange Online.'
+    } catch {
+        Die "Failed to connect to Exchange Online: $($_.Exception.Message)"
+    }
+}
+
+# --- Block ---------------------------------------------------------------
+$Results = @()
+
+foreach ($lt in $ListType) {
+    Write-Step "Processing $lt block for '$Domain'"
+
+    # Check for an existing block so we don't duplicate
+    $existing = $null
+    try {
+        $existing = Get-TenantAllowBlockListItems -ListType $lt -Block -Entry $Domain -ErrorAction SilentlyContinue
+    } catch { }
+
+    if ($existing) {
+        Write-Warn "$lt entry already exists (Id: $($existing.Identity)). Skipping."
+        $Results += [pscustomobject]@{
+            Domain = $Domain; ListType = $lt; Action = 'AlreadyBlocked'
+            Identity = $existing.Identity; Notes = $existing.Notes
+        }
+        continue
+    }
+
+    if ($Execute) {
+        try {
+            $new = New-TenantAllowBlockListItems -ListType $lt -Block -Entries $Domain `
+                -NoExpiration -Notes $Notes -ErrorAction Stop
+            Write-OK "$lt block created (Id: $($new.Identity))."
+            $Results += [pscustomobject]@{
+                Domain = $Domain; ListType = $lt; Action = 'Blocked'
+                Identity = $new.Identity; Notes = $Notes
+            }
+        } catch {
+            Write-Warn "Failed to block $lt '$Domain': $($_.Exception.Message)"
+            $Results += [pscustomobject]@{
+                Domain = $Domain; ListType = $lt; Action = "Error: $($_.Exception.Message)"
+                Identity = ''; Notes = $Notes
+            }
+        }
+    } else {
+        Write-Warn "[DRY RUN] Would create $lt block for '$Domain' (NoExpiration)."
+        $Results += [pscustomobject]@{
+            Domain = $Domain; ListType = $lt; Action = 'WouldBlock (dry run)'
+            Identity = ''; Notes = $Notes
+        }
+    }
+}
+
+# --- Verify --------------------------------------------------------------
+if ($Execute) {
+    Write-Step 'Verifying block entries'
+    foreach ($lt in $ListType) {
+        $v = Get-TenantAllowBlockListItems -ListType $lt -Block -Entry $Domain -ErrorAction SilentlyContinue
+        if ($v) { Write-OK "$lt block present for '$Domain' (Id: $($v.Identity))." }
+        else { Write-Warn "$lt block NOT found for '$Domain' - check manually." }
+    }
+}
+
+# --- Export --------------------------------------------------------------
+$Results | Export-Csv -Path $LogPath -NoTypeInformation -Encoding UTF8
+Write-OK "Log written to $LogPath"
+Write-Step 'Done.'

@@ -1,0 +1,24 @@
+# Output — never committed
+**/Exports/
+**/exports/
+**/Input/
+**/input/
+*.csv
+*.xlsx
+*.log
+
+# Credentials — never committed
+*.pfx
+*.p12
+*.cer
+*.crt
+*.key
+*.pem
+
+# Local config
+*.local.json
+.vscode/settings.json
+
+# OS
+Thumbs.db
+.DS_Store
