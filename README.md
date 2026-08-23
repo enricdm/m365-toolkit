@@ -19,10 +19,10 @@ of it — at [enricdiaz.com/projects](https://enricdiaz.com/projects).
 | Platform | Scripts | What it covers |
 |---|---:|---|
 | [**Entra ID**](Platforms/EntraID/) | 18 | App registrations, federated credentials, Conditional Access, MFA exclusions, usage location, licence reclamation, device object cleanup |
-| [**Endpoint**](Platforms/Endpoint/) | 14 | Intune assignments and group membership, device and configuration exports, primary user and category maintenance, stale-device cleanup, device-side remediation pairs, out-of-support Windows |
-| [**Exchange Online**](Platforms/Exchange/) | 11 | Mail groups, shared mailboxes and calendars, forwarding, TLS and mail-flow inspection, resource rooms |
+| [**Endpoint**](Platforms/Endpoint/) | 12 | Intune assignments and group membership, device and configuration exports, primary user and category maintenance, stale-device cleanup, device-side remediation pairs, out-of-support Windows |
+| [**Exchange Online**](Platforms/Exchange/) | 11 | Mail groups, shared mailboxes and calendars, forwarding, mail-flow protection and verification, resource rooms |
 | [**SharePoint Online**](Platforms/SharePoint/) | 8 | Site permissions, storage quotas and notifications, OneDrive recovery |
-| [**Active Directory**](Platforms/ActiveDirectory/) | 2 | Privileged-account discovery, SMBv1 network probe, proxy address repair |
+| [**Active Directory**](Platforms/ActiveDirectory/) | 2 | proxyAddresses repair for hybrid identity, SMBv1 network probe |
 | [**Power Platform**](Platforms/PowerPlatform/) | 2 | Environment role audit, Environment Maker grants |
 | [**Purview**](Platforms/Purview/) | 1 | Sensitivity label and encryption removal |
 
@@ -34,9 +34,9 @@ Each platform folder has its own README with an index, prerequisites and example
 
 ### Scripts that change state say so
 
-Every README carries a **Changes state** column. Roughly a third of these scripts write to the
-tenant — they remove licences, delete group members, grant privileges, send mail, or decrypt
-files. Those are marked, and each one documents its safeguards.
+Every README carries a **Changes state** column. Close to half of these scripts change something —
+they remove licences, delete group members, grant privileges, send mail, or decrypt files. Those
+are marked, and each one documents its safeguards.
 
 The convention throughout:
 
@@ -105,11 +105,17 @@ code Platforms/EntraID/README.md
 
 ## Conventions
 
-- `Verb-Noun.ps1`, PowerShell approved verbs
-- Comment-based help on every script: `Get-Help .\Script.ps1 -Full`
-- Output to `Exports/` next to the script, timestamped, never overwriting
-- No relative `.\` paths — everything anchors to `$PSScriptRoot`
-- Where a script grants a privilege, it documents how to revoke it
+- `Verb-Noun.ps1`, PowerShell approved verbs — with one exception, `Detect-LocalAdminAccount.ps1`,
+  which follows the Detect/Repair naming Intune Remediations expects
+- Every script documents itself in its header. Most use comment-based help, so
+  `Get-Help .\Script.ps1 -Full` works; seven older ones carry a banner comment block instead, which
+  reads fine in an editor but returns nothing useful to `Get-Help`
+- Most scripts write timestamped output to `Exports/` next to the script, anchored to
+  `$PSScriptRoot`, never overwriting. Seven default their output path to the **current directory**
+  instead — check `-OutputPath` before running those from an arbitrary working directory
+- Where a script grants a privilege, it documents how to revoke it. Only two grant one
+  (`Grant-EnvironmentMaker.ps1` and the Purview super user), and neither revocation is scripted —
+  both are documented manual steps
 
 ---
 

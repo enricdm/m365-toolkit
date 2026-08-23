@@ -676,3 +676,40 @@ They are published as they are because that is how they were written under servi
 requests — one script per request, each improving on the last. The consolidation is
 the obvious next step, and knowing that is worth more than pretending it is already
 done.
+
+## Known rough edges
+
+The consolidation debt in `Groups/` is described in the note above; the rest are individual
+defects, all of them reachable in normal use.
+
+- **`New-MailGroup.ps1` cannot run unattended.** The group type comes from a `Read-Host`, so it
+  cannot be scheduled or driven from a queue.
+- **`New-MailGroup.ps1` has no address collision check.** It will attempt to create a group whose
+  primary SMTP is already taken and fail partway. `New-FaxDistributionList.ps1` checks first; that
+  fix never travelled.
+- **`New-MailGroup.ps1` sleeps a fixed 10 seconds** and assumes replication has caught up. On a slow
+  day it has not, and the member-add step fails with an error that reads like a permissions problem.
+- **`Ensure-MailContact` in `New-MailGroup.ps1` uses an unapproved verb.** Harmless at runtime,
+  flagged by PSScriptAnalyzer.
+- **`Edit-MailGroupMember.ps1` keeps its work list inside the file.** Running it means editing it,
+  which rules out scheduling and makes the run history harder to reconstruct than the CSV log
+  suggests.
+- **`New-FaxDistributionList.ps1` reports false `MISSING` members.** The closing diff compares the
+  addresses you passed against each member's *primary* SMTP, so anyone requested by an alias is
+  reported missing even though they were added correctly.
+- **`New-SharedCalendar.ps1 -CreateAccessGroup` will usually fail.** Mail-enabled security groups
+  can no longer be created in Exchange Online. Create the group on-prem and let it sync, or use
+  `-DirectGrant`.
+- **`Test-PhishingSimulationRule.ps1` disconnects Exchange Online when it finishes** — including a
+  session you had open before you ran it.
+- **Message trace retains roughly 10 days.** A larger `-DaysBack` returns nothing for the older part
+  of the range rather than warning that it cannot cover it.
+- **Graph usage data lags about two days**, so `Get-ProofpointLiteEligibility.ps1` is never quite
+  current. Fine for a licensing decision, wrong for anything operational.
+- **Six of these scripts carry a banner header rather than comment-based help** —
+  `Edit-MailGroupMember`, `New-FaxDistributionList`, `New-MailGroup`, `New-SharedMailbox`,
+  `Get-ProofpointLiteEligibility` and `Test-PhishingSimulationRule`. They document themselves
+  perfectly well in an editor, but `Get-Help -Full` returns almost nothing for them.
+- **`Set-RoomMailbox.ps1` and `Get-CountryResource.ps1` ship with placeholder naming tokens.**
+  `-MarkerPrefix`, `-AddressPrefix`, the city/site codes and the calendar naming convention follow
+  one subsidiary's scheme. They are parameters, but the defaults are not yours.

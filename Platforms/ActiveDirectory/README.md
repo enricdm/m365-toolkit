@@ -58,7 +58,7 @@ is used.
 > human decision about which address should win. The `mail` attribute is only realigned when the
 > repaired address belongs to `-AcceptedRoot`.
 >
-> Run a delta sync on Entra Connect afterwards and verify in Exchange Online. Script output is in Spanish.
+> Run a delta sync on Entra Connect afterwards and verify in Exchange Online.
 
 ### `Test-SmbV1.ps1`
 
@@ -123,3 +123,22 @@ Two details that make the results trustworthy:
   false all-clear, which is exactly the kind of result that survives into a compliance report unchallenged.
 
 If `nmap` is available, `nmap -p445 --script smb-protocols <host>` is a reasonable cross-check.
+
+## Known rough edges
+
+- **`Repair-ProxyAddressPrimary.ps1` detects five patterns and repairs one.** `MultiplePrimary`,
+  `PrimaryIsMOERA`, `MailMismatch` and objects with several malformed values are reported and left
+  alone. That is deliberate — each needs a person to decide which address wins — but it does mean
+  the script is an auditor first and a repair tool second, and the bulk of a large finding will
+  still be handled by hand.
+- **It has no `-WhatIf`.** The safeguard is that `-Execute` is off by default, which covers the same
+  ground, but it breaks the convention the rest of the repository follows.
+- **There is no undo script.** The change-log CSV records the before and after value for every
+  object it touched, so a rollback is possible, but you would be writing it yourself.
+- **`Test-SmbV1.ps1` proves `ENABLED`; it cannot prove a negative.** `NO_TCP` means the host was
+  unreachable and settles nothing, and `UNCLEAR` means the response did not match a shape the parser
+  recognises. Neither is a clean bill of health. Cross-check anything that is not a clear `ENABLED`
+  or `DISABLED`.
+- **The probe speaks SMB1 only, over a raw socket.** It is a deliberately narrow implementation of
+  one negotiation exchange, not an SMB library. A host behind a middlebox that rewrites or inspects
+  SMB may answer in a way it reads as `UNCLEAR`.

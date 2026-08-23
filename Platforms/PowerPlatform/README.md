@@ -103,3 +103,22 @@ the user's UPN.
 > Customizer**, assigned in the Power Platform Admin Center under *Environment → Settings → Users +
 > permissions → Security roles*. The script prints this reminder after a successful grant, but it
 > cannot do it for you — so a request is not finished when this script exits.
+
+## Known rough edges
+
+- **There is no revocation script.** `Grant-EnvironmentMaker.ps1` gives the role and nothing here
+  takes it back. Revoke in the Power Platform Admin Center, or with
+  `Remove-AdminPowerAppEnvironmentRoleAssignment`. The same asymmetry applies to the Purview super
+  user grant one folder over — both privileges are granted by script and returned by hand, which is
+  the wrong way round for anything you want reliably closed out.
+- **A Dataverse environment needs a manual second step.** Environment Maker alone does not grant
+  solution import rights; the `System Customizer` Dataverse role does, and it is assigned in the
+  portal. The script prints the reminder, but a request is not finished when the script exits.
+- **Role matching is substring-based.** `Get-PowerPlatformAdminAudit.ps1` matches on `Admin` and
+  `Maker` because the exact `RoleType` strings have changed between module versions. A future
+  version that renames them again will silently match less, so the diagnostic list of every distinct
+  `RoleType` seen is worth reading rather than skipping.
+- **An empty audit result is ambiguous by nature.** Zero assignments can mean no explicit role
+  records exist, or that the signed-in account cannot see them. The script says so and gives you
+  `-DiagnosticEnvironmentName` to tell the two apart, but it cannot resolve it for you — and a bare
+  zero is exactly the kind of result that gets filed as a clean audit.

@@ -338,3 +338,37 @@ throttling.
 >
 > Note it restores *into a live site*: if a name now collides with a newer file, resolve that first.
 > Only first-stage recycle bin items are eligible by default (`-FirstStageOnly`).
+## Known rough edges
+
+- **`Get-EveryoneExceptExternalGrant.ps1` and `Get-SiteOwnerStatus.ps1` reconnect once per site.**
+  `Connect-PnPOnline` is called inside the site loop, because PnP binds a connection to a single
+  site. Across a large tenant that dominates the runtime — a full scan is measured in hours, not
+  minutes. Use `-UrlPattern` or `-InputCsv` to scope it wherever you can.
+- **`-ScanItems` is slow enough to be a separate decision.** Item-level scanning walks every list
+  item with unique permissions and is opt-in for that reason. Do not add it to a tenant-wide run
+  without knowing how long you are prepared to wait.
+- **Both permission scans need Site Collection Admin on every site they read.** The app registration
+  having `Sites.FullControl.All` is not always sufficient for the per-site PnP calls, and a site
+  that cannot be opened is reported as an error row rather than silently skipped — but it is still
+  a gap in the scan, and a scan with gaps is what this script exists to avoid.
+- **`Clear-SpoTokenCache.ps1` signs you out of everything.** The MSAL and WAM caches are per-profile
+  and shared across every Microsoft 365 tool on the machine. Teams, Outlook and the Graph SDK will
+  all want a fresh sign-in afterwards. It is eight lines with a blast radius considerably larger
+  than its name.
+- **`PercentUsed` from `Get-SiteStorage.ps1` is not a ranking.** In a pooled-storage tenant the cap
+  it divides by is a shared ceiling, not a per-site allocation, so the percentage is meaningful only
+  for sites that have been given an explicit quota. Do not sort by it and act on the top rows.
+- **`Send-StorageNotification.ps1` hand-rolls its JWT client assertion.** That is a deliberate
+  workaround for MSAL assembly conflicts when PnP or Az is loaded in the same session, but it means
+  this script carries its own token-signing code instead of delegating to a maintained SDK. If Entra
+  changes assertion requirements, this is the script that breaks.
+- **`Send-StorageNotification.ps1` needs `Mail.Send` as an application permission.** Granted the
+  ordinary way that is tenant-wide send-as-anyone. The application access policy in the requirements
+  section is not optional in any environment you would want to defend, and nothing in the script
+  checks that you applied it — it works identically either way.
+- **`Restore-OneDriveFolder.ps1` restores into a live site.** Names that have since been reused will
+  collide, and only first-stage recycle bin items are eligible by default. Neither is a defect, but
+  both surprise people mid-recovery.
+- **`Get-SiteOwnerStatus.ps1` and `Get-SiteStorage.ps1` default their output to the current
+  directory**, not to `Exports/` next to the script like most of the repository. Pass `-OutputPath`
+  explicitly if the working directory is not where you want the CSV.

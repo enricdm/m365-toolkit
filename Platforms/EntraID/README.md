@@ -6,7 +6,7 @@ here talks to Microsoft Graph and is written to run against *any* tenant — ten
 ids, domains, group names and repository names are parameters, never constants.
 
 Most scripts are read-only and produce CSV/XLSX you can hand to someone else. The
-five that change directory state are called out explicitly below and each one has
+six that change directory state are called out explicitly below and each one has
 its own section.
 
 These were written against a multi-country tenant of roughly 40,000 users, with
@@ -26,7 +26,7 @@ one does, this README points it out.
 
 ## Index
 
-| Script | What it does | Modifies state | Auth |
+| Script | What it does | Changes state | Auth |
 |---|---|:---:|---|
 | **Applications** | | | |
 | [`Export-AppRegistration.ps1`](Applications/Export-AppRegistration.ps1) | Full app-registration inventory: owners, credentials, API permissions, sign-in activity, hygiene flags | No | interactive |
@@ -60,7 +60,7 @@ one does, this README points it out.
 - `Microsoft.Graph` 2.x. Individual scripts need only some sub-modules —
   `.Authentication`, `.Users`, `.Groups`, `.Applications`, `.Identity.SignIns`,
   `.Reports` — and each script lists its own in the header.
-- `ImportExcel` for the three scripts that read or write `.xlsx`
+- `ImportExcel` for the two scripts that read or write `.xlsx`
   (`Update-AppContact.ps1`, `Export-CountryUserReport.ps1`).
 - `ExchangeOnlineManagement` only for `Invoke-LicenseReclamation.ps1 -Tiers CONVERT_SHARED`
   and `Get-LicenseReclamationPlan.ps1 -EnrichFromExchange`.
@@ -367,12 +367,12 @@ nobody owns.
 it could not resolve.
 **Permissions:** `Directory.Read.All` (Global Reader is enough).
 
-> **Aviso:** it writes only files, never the directory. `-WhatIf` skips the write;
+> **Note:** it writes only files, never the directory. `-WhatIf` skips the write;
 > existing values in the contact column are preserved unless you pass `-Force`.
 
 ### `New-ClientApp.ps1`
 
-> **Aviso: creates directory objects.** One app registration plus one service
+> **Warning: creates directory objects.** One app registration plus one service
 > principal per name, with the supplied owner attached to both.
 
 Creating one app registration by hand is a two-minute job. Creating fifteen of them
@@ -403,7 +403,7 @@ Governance metadata is stamped into the Notes field of every app it creates.
 
 ### `Update-FederatedCredential.ps1`
 
-> **Aviso: destructive.** It deletes **every** federated identity credential on the
+> **Warning: destructive.** It deletes **every** federated identity credential on the
 > target app registration before recreating them. Anything not covered by
 > `-Repository` will not come back.
 
@@ -443,7 +443,7 @@ type `yes` at the prompt. The final state is printed for verification.
 
 ### `New-SecurityGroup.ps1`
 
-> **Aviso: creates groups and adds members** — but only with `-Execute`. Without it
+> **Warning: creates groups and adds members** — but only with `-Execute`. Without it
 > the script previews every action and touches nothing.
 
 Group creation requests arrive as a list — a new team, a new project, a new
@@ -491,7 +491,7 @@ will not work there.
 
 ### `New-AdminAccount.ps1`
 
-> **Aviso: creates a privileged account.** It creates a cloud-only admin user, sets
+> **Warning: creates a privileged account.** It creates a cloud-only admin user, sets
 > its manager and `ExtensionAttribute1`, issues a Temporary Access Pass, enforces
 > per-user MFA and optionally adds it to a Conditional Access group. There is no
 > `-WhatIf`; the safeguard is an explicit confirmation prompt showing the exact
@@ -561,7 +561,7 @@ assigned in `-AssignedRoles` so it shows up in the end-user message.
 
 ### `Export-CountryUserReport.ps1`
 
-> **Aviso: uploads a file to SharePoint** when `-Execute` is passed. It makes no
+> **Warning: uploads a file to SharePoint** when `-Execute` is passed. It makes no
 > directory changes. Without `-Execute` it builds the workbook locally and prints
 > the destination it would have used.
 
@@ -663,7 +663,7 @@ somebody.
 
 #### `Invoke-LicenseReclamation.ps1`
 
-> **Aviso: this is the one script here that removes things.** It removes licenses,
+> **Warning: this is the one script here that removes things.** It removes licenses,
 > removes users from licensing groups, and — with `-Tiers CONVERT_SHARED` — converts
 > user mailboxes to shared. `ConfirmImpact` is `High`, so every individual change
 > prompts unless you pass `-Confirm:$false`, and `-WhatIf` gives a complete dry run.

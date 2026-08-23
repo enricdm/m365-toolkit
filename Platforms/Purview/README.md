@@ -116,3 +116,26 @@ than something the script discovered; it supports `-WhatIf`; `-PreserveFileDetai
 `Modified`/`Modified By` intact; every phase is transcript-logged; and per-file failures are caught
 and recorded rather than aborting the batch. Use `-JustificationMessage` to record your change
 reference in the audit log.
+
+## Known rough edges
+
+- **Nothing forces Phase 5, and there is no timer.** If the run errors, or the window is closed, or
+  somebody simply stops after Phase 4, the super user feature stays enabled and the account keeps
+  tenant-wide decryption indefinitely. This is the single most consequential gap in the repository.
+  A wrapper that guaranteed cleanup in a `finally` block would be the right fix; it does not exist
+  yet, so the control is a person remembering.
+- **Phase 4 takes no backup and cannot be undone.** `Remove-FileLabel` strips the label and the
+  encryption in place. Back the target files up yourself first — the script will not do it and will
+  not ask whether you did.
+- **The super user privilege cannot be scoped.** It is all protected content in the tenant or none.
+  That is a property of Azure RMS, not of this script, but it means the blast radius of Phase 2 is
+  never proportionate to the job you are doing.
+- **Windows PowerShell 5.1 only, on Windows, as Administrator.** The `PurviewInformationProtection`
+  module does not work in PowerShell 7, which makes this the one script here that cannot run
+  alongside the rest of the toolkit in the same session.
+- **Email is out of scope.** Labels on Exchange Online messages need an eDiscovery export and
+  `Set-FileLabel` against the resulting PST. This script only handles files.
+- **There is no revocation script for the grant beyond Phase 5 itself**, and no check that Phase 5
+  actually ran. Verify by hand with `Get-AipServiceSuperUserFeature` and `Get-AipServiceSuperUser`.
+- **Rehearse the whole sequence on a throwaway file set** before pointing it at anything real.
+  Given what Phase 4 does, a dry run of Phase 4 is the minimum, not a courtesy.
