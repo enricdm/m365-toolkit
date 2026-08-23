@@ -9,6 +9,9 @@ a managed device estate of around 2,000 endpoints — then audited, parameterise
 anything specific to those environments. Every script runs against your own tenant with your own
 credentials.
 
+Several of these scripts have a write-up behind them — the problem, the design and what came
+of it — at [enricdiaz.com/projects](https://enricdiaz.com/projects).
+
 ---
 
 ## What's here
