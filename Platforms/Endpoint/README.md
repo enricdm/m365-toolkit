@@ -36,7 +36,6 @@ compliant and `1` for "remediate"; nothing else.
 | Pair | What it checks and fixes | Changes state | Auth |
 |---|---|:---:|---|
 | [`Remediations/LocalAdmin/`](Remediations/LocalAdmin/) | A named local administrator account exists, is enabled, and is in the Administrators group | **Yes** — repair half | none — SYSTEM |
-| [`Remediations/Bookmarks/`](Remediations/Bookmarks/) | Managed-bookmarks policy for Edge or Chrome matches the expected set | **Yes** — repair half | none — SYSTEM |
 
 ## Requirements
 
@@ -307,29 +306,6 @@ and pinning it here fights that.
 > `exit 1` on the account-missing branch. `return` does not set the process exit code, so a device
 > **missing** the account exited `0` — reported compliant, never remediated. The check inverted its
 > result in precisely the case it existed for.
-
-### `Remediations/Bookmarks/`
-
-Writes the browser **policy** — `ManagedFavorites` for Edge, `ManagedBookmarks` for Chrome — under
-`HKLM\SOFTWARE\Policies\`. Managed bookmarks appear in a read-only folder on the bookmarks bar,
-survive profile resets and cannot be deleted by the user, which is what you want on shared devices.
-
-Detection compares the **set of URLs**, order- and case-insensitively; titles are ignored, because
-renaming a folder label is not a compliance problem but a missing destination is.
-
-> **Why the policy and not the bookmarks file.** Editing
-> `%LOCALAPPDATA%\...\User Data\Default\Bookmarks` directly is destructive — the scripts this
-> replaces cleared `bookmark_bar.children` before inserting, discarding everything the user had — and
-> unreliable: the browser holds the file open and rewrites it on exit, silently reverting the change;
-> the file carries a checksum, so an externally edited copy can be discarded; and it only affects the
-> Default profile of whoever ran it.
->
-> `-SeedUserFile` is still available for the narrow case where users must be able to *edit* the
-> seeded bookmarks. It is off by default, **appends only**, backs the file up first, and skips itself
-> with a message if the browser is running.
-
-The policy applies at next browser launch. A device still showing the old bookmarks immediately after
-remediation has not necessarily failed.
 
 ### `Get-OutOfSupportDevice.ps1`
 
