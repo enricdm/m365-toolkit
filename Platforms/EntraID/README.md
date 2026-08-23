@@ -38,7 +38,6 @@ one does, this README points it out.
 | [`Get-MfaExclusion.ps1`](ConditionalAccess/Get-MfaExclusion.ps1) | Every user excluded from MFA-enforcing CA policies, with nested groups expanded | No | app-only + cert, or interactive |
 | [`Get-ExemptionSignInActivity.ps1`](ConditionalAccess/Get-ExemptionSignInActivity.ps1) | Adds 30-day sign-in telemetry to those exemptions and says which can be dropped or narrowed | No | app-only + cert, or interactive |
 | [`Get-ExemptionUsageLocation.ps1`](ConditionalAccess/Get-ExemptionUsageLocation.ps1) | Looks up `usageLocation` for a list of UPNs | No | interactive |
-| [`classify_exceptions_by_country.py`](ConditionalAccess/classify_exceptions_by_country.py) | Assigns a country to each MFA exception by cross-checking UPN domain, sign-in geography and usageLocation | No | none (offline) |
 | [`Export-ConditionalAccessPolicy.ps1`](ConditionalAccess/Export-ConditionalAccessPolicy.ps1) | Exports all CA policies with every GUID resolved to a display name | No | interactive |
 | [`Export-VpnSignInLog.ps1`](ConditionalAccess/Export-VpnSignInLog.ps1) | Sign-ins for a VPN application plus Identity Protection risk detections and risky users | No | app-only + cert, or interactive |
 | **Identity** | | | |
@@ -63,10 +62,6 @@ one does, this README points it out.
   (`Update-AppContact.ps1`, `Export-CountryUserReport.ps1`).
 - `ExchangeOnlineManagement` only for `Invoke-LicenseReclamation.ps1 -Tiers CONVERT_SHARED`
   and `Get-LicenseReclamationPlan.ps1 -EnrichFromExchange`.
-
-**Python** (one script)
-
-- Python 3.9+, `pandas` and `openpyxl`.
 
 **Graph permissions**
 
@@ -94,9 +89,8 @@ retains interactive sign-in logs for roughly 30 days.
 
 **Domain / country data**
 
-`Update-AppContact.ps1`, `Get-MissingLocationReport.ps1` and
-`classify_exceptions_by_country.py` all read their domain-to-country mapping from
-a shared data file:
+`Update-AppContact.ps1` and `Get-MissingLocationReport.ps1` read their
+domain-to-country mapping from a shared data file:
 
 ```
 Platforms/_Shared/Data/domain-country-map.psd1
@@ -104,9 +98,12 @@ Platforms/_Shared/Data/domain-country-map.psd1
 
 It ships with **placeholder `contoso.*` domains**. Replace them with your own
 before relying on those scripts, or keep your own copy elsewhere and pass
-`-DomainMapPath` (PowerShell) / `--domain-map-path` (Python). Nothing in the file
-is secret — it is a list of your public e-mail domains and the country each one
-belongs to.
+`-DomainMapPath`. Nothing in the file is secret — it is a list of your public
+e-mail domains and the country each one belongs to.
+
+The file exists because this mapping previously lived in **six** places across
+the estate with values that had drifted apart. One cost-allocation report ended
+up treating `GB` (2,775 users) and `UK` (2) as two different countries.
 
 ## Usage
 
@@ -326,26 +323,6 @@ disappears from the list without saying why.
 # Resolve usageLocation for a UPN list, then classify each exception by country
 .\ConditionalAccess\Get-ExemptionUsageLocation.ps1 -TenantId '<tenant-id>' -InputCsv .\users.csv
 ```
-
-```bash
-python ConditionalAccess/classify_exceptions_by_country.py exceptions.xlsx \
-    --usage-location UsageLocation_<stamp>.csv \
-    --domain-map-path ../_Shared/Data/domain-country-map.psd1
-```
-
-The Python script cross-checks three independent signals (UPN domain, sign-in
-geography, usageLocation) rather than trusting `usageLocation` alone, because many
-exceptions are service or shared accounts where it was never set. Rows it cannot
-settle land on a `Needs Review` sheet instead of being guessed — a wrong country
-sends the review request to a team that has never heard of the account, and the row
-comes back untouched weeks later. An explicit "I don't know" gets handled faster.
-
-Domain alone does not settle it either: the main corporate domain and the
-`.onmicrosoft.com` domain are used in every country, so for those the sign-in
-geography decides. The domain-to-country mapping is read from the shared data file
-rather than hardcoded here, because it previously existed six times across the tree
-with contradicting values — one cost-allocation report managed to treat `GB` (2,775
-users) and `UK` (2) as two different countries.
 
 ### `Update-AppContact.ps1`
 
