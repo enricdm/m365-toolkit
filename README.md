@@ -1,11 +1,13 @@
 # M365 Toolkit
 
-PowerShell tooling for administering Microsoft 365 and Entra ID at scale — identity, licensing,
-mail flow, SharePoint permissions and data governance.
+PowerShell tooling for administering Microsoft 365, Entra ID and Intune at scale — identity,
+licensing, mail flow, SharePoint permissions, endpoint management and data governance.
 
-These are working scripts, not demos. They were written to solve real problems in a multi-country
-tenant of roughly 40,000 users, then audited, parameterised and stripped of anything specific to
-that environment. Every script runs against your own tenant with your own credentials.
+These are working scripts, not demos. They were written to solve real problems in production
+tenants — most of them in a multi-country tenant of roughly 40,000 users, and the Intune tooling in
+a managed device estate of around 2,000 endpoints — then audited, parameterised and stripped of
+anything specific to those environments. Every script runs against your own tenant with your own
+credentials.
 
 ---
 
@@ -13,11 +15,11 @@ that environment. Every script runs against your own tenant with your own creden
 
 | Platform | Scripts | What it covers |
 |---|---:|---|
-| [**Entra ID**](Platforms/EntraID/) | 18 | App registrations, federated credentials, Conditional Access, MFA exclusions, usage location, licence reclamation |
+| [**Entra ID**](Platforms/EntraID/) | 18 | App registrations, federated credentials, Conditional Access, MFA exclusions, usage location, licence reclamation, device object cleanup |
+| [**Endpoint**](Platforms/Endpoint/) | 14 | Intune assignments and group membership, device and configuration exports, primary user and category maintenance, stale-device cleanup, device-side remediation pairs, out-of-support Windows |
 | [**Exchange Online**](Platforms/Exchange/) | 11 | Mail groups, shared mailboxes and calendars, forwarding, TLS and mail-flow inspection, resource rooms |
 | [**SharePoint Online**](Platforms/SharePoint/) | 8 | Site permissions, storage quotas and notifications, OneDrive recovery |
 | [**Active Directory**](Platforms/ActiveDirectory/) | 2 | Privileged-account discovery, SMBv1 network probe, proxy address repair |
-| [**Endpoint**](Platforms/Endpoint/) | 2 | Out-of-support Windows devices, desktop application usage |
 | [**Power Platform**](Platforms/PowerPlatform/) | 2 | Environment role audit, Environment Maker grants |
 | [**Purview**](Platforms/Purview/) | 1 | Sensitivity label and encryption removal |
 
@@ -59,7 +61,10 @@ had that flaw were fixed; the pattern is documented where it matters.
 
 ## Requirements
 
-- **PowerShell 7.2+** (a few scripts declare `#Requires -Version 7.0`)
+- **PowerShell 7.2+** (a few scripts declare `#Requires -Version 7.0`) — with one deliberate
+  exception: everything under `Platforms/Endpoint/Remediations/` runs **on the managed device**, as
+  SYSTEM, under **Windows PowerShell 5.1**, because that is what Intune Remediations executes. Those
+  scripts use no modules and make no network calls.
 - Modules, per platform: `Microsoft.Graph`, `ExchangeOnlineManagement`, `PnP.PowerShell`,
   `ActiveDirectory` (RSAT), `Microsoft.PowerApps.Administration.PowerShell`, `ImportExcel`
 - Permissions vary per script and are documented in each README — most are read-only Graph

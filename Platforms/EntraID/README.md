@@ -49,6 +49,8 @@ one does, this README points it out.
 | **Licensing** | | | |
 | [`Get-LicenseReclamationPlan.ps1`](Licensing/Get-LicenseReclamationPlan.ps1) | Tiers every holder of a SKU into KEEP / REVIEW / CONVERT_SHARED / RECLAIM / EXCLUDE with the reasoning shown | No | interactive |
 | [`Invoke-LicenseReclamation.ps1`](Licensing/Invoke-LicenseReclamation.ps1) | Executes that plan: removes licenses, removes group membership, optionally converts mailboxes to shared | **Yes** | interactive (+ EXO) |
+| **Devices** | | | |
+| [`Remove-EntraDevice.ps1`](Devices/Remove-EntraDevice.ps1) | Removes device objects from the directory, from an explicit list or by staleness | **Yes** (destructive) | interactive |
 
 ## Requirements
 
@@ -726,6 +728,40 @@ user with what was attempted and what happened.
 **Reversibility:** removing a license is reversible (re-add to the group, or
 re-assign directly). Converting a mailbox to shared is reversible with
 `Set-Mailbox -Type Regular`, but the mailbox then needs a license again.
+
+### `Devices/Remove-EntraDevice.ps1`
+
+Deleting the Entra device object is the last step of decommissioning, after the Intune record has
+gone. It is also the step people get wrong, because an Entra device object and an Intune managed
+device are two different things: the Intune record is the MDM enrollment, the Entra object is the
+directory identity that Conditional Access, device-based licensing, BitLocker key escrow and
+Windows Hello for Business all evaluate against.
+
+```powershell
+# What would be removed, by staleness. Deletes nothing.
+.\Remove-EntraDevice.ps1 -StaleDays 180
+
+# Remove a reviewed list
+.\Remove-EntraDevice.ps1 -InputCsv .\decommissioned.csv -Execute
+```
+
+**Input:** `-DeviceId`, `-InputCsv` (a `DeviceId` column, object ID or `deviceId`), or `-StaleDays`.
+**Output:** one CSV row per device with `WOULD-DELETE`, `DELETED`, `SKIPPED`, `NOT-FOUND`,
+`NO-SIGNIN-DATA` or `FAILED`.
+**Permissions:** `Device.ReadWrite.All`.
+
+> **Order matters.** Retire or delete in Intune **first**, then remove the Entra object. Removing
+> the Entra object while the device is still enrolled and in use leaves an orphan that will usually
+> re-register on next sign-in — so the cleanup looks like it failed, when in fact it was done in the
+> wrong order.
+>
+> **BitLocker recovery keys are escrowed against the Entra device object.** Deleting it can make
+> those keys unrecoverable. If the hardware is being reused rather than destroyed, export the keys
+> first. The script warns but cannot check for you.
+>
+> `-StaleDays` rejects values below 90 — an Entra device object going quiet for a few weeks is
+> normal — and `-MaxDevices` defaults to 25. Objects with no `approximateLastSignInDateTime` at all
+> are reported as `NO-SIGNIN-DATA` and never acted on: no timestamp is not an old timestamp.
 
 ## Known rough edges
 
