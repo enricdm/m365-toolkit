@@ -1,7 +1,7 @@
 # Endpoint
 
-Intune device management: reporting, bulk maintenance and configuration snapshots — plus two
-standalone endpoint reports.
+Intune device management: reporting, bulk maintenance and configuration snapshots — plus one
+device-side report.
 
 Everything under `Intune/` talks to Microsoft Graph from an admin workstation.
 `Get-VisioProjectDesktopUsage.ps1` runs on the device itself.
@@ -14,10 +14,10 @@ Everything under `Intune/` talks to Microsoft Graph from an admin workstation.
 |---|---|:---:|---|
 | [`Intune/Get-IntuneGroupAssignment.ps1`](Intune/Get-IntuneGroupAssignment.ps1) | Everything assigned to an Entra ID group across 14 object types, separating include from exclude | No | delegated Graph |
 | [`Intune/Get-IntuneDeviceGroupMembership.ps1`](Intune/Get-IntuneDeviceGroupMembership.ps1) | Which groups a device is in, or which devices are in a group — direct and via primary user | No | delegated Graph |
-| [`Intune/Get-IntuneDeviceUser.ps1`](Intune/Get-IntuneDeviceUser.ps1) | Last logged-on user vs assigned primary user, with mismatch and staleness flags | No | delegated Graph |
+| [`Intune/Get-IntuneDeviceUserDrift.ps1`](Intune/Get-IntuneDeviceUserDrift.ps1) | Last logged-on user vs assigned primary user, with mismatch and staleness flags | No | delegated Graph |
 | [`Intune/Export-IntuneDevice.ps1`](Intune/Export-IntuneDevice.ps1) | Device inventory with platform, ownership and Android enrollment-type filters; optional delta | No | delegated Graph |
 | [`Intune/Export-IntuneConfiguration.ps1`](Intune/Export-IntuneConfiguration.ps1) | Point-in-time JSON snapshot of tenant configuration, with script bodies decoded to `.ps1` | No | delegated Graph |
-| [`Get-OutOfSupportDevice.ps1`](Get-OutOfSupportDevice.ps1) | Reports every Windows device in Intune and flags those past end-of-servicing | No | delegated Graph |
+| [`Intune/Get-OutOfSupportDevice.ps1`](Intune/Get-OutOfSupportDevice.ps1) | Reports every Windows device in Intune and flags those past end-of-servicing | No | delegated Graph |
 | [`Get-VisioProjectDesktopUsage.ps1`](Get-VisioProjectDesktopUsage.ps1) | Runs on a device and reports whether Visio/Project are installed and when they were last used | No | none — runs locally |
 
 ### Maintenance — writes to the tenant
@@ -57,7 +57,7 @@ returns, not the branch you think it took.
 
 ## Requirements
 
-**`Intune/` and `Get-OutOfSupportDevice.ps1`**
+**`Intune/`**
 
 - PowerShell 7.2+
 - Module: `Microsoft.Graph.Authentication` (`Install-Module Microsoft.Graph`)
@@ -131,18 +131,18 @@ Together they close the loop from a device to the policy that reached it.
 > row means "not a member right now", not "the rule does not match it". Nested groups are reported
 > one level deep; transitive membership is not expanded.
 
-### `Intune/Get-IntuneDeviceUser.ps1`
+### `Intune/Get-IntuneDeviceUserDrift.ps1`
 
 The drift between who the device says used it last and who Intune thinks owns it is what makes
 licence attribution, retirement and support routing go wrong.
 
 ```powershell
 # Windows only, with Autopilot, treating two profiles as shared devices
-.\Get-IntuneDeviceUser.ps1 -Platform Windows -IncludeAutopilot `
+.\Get-IntuneDeviceUserDrift.ps1 -Platform Windows -IncludeAutopilot `
     -SharedProfileName 'AP-Classrooms','AP-MeetingRooms' -OutputPath .\Exports\device-users.csv
 
 # Only the rows that need attention
-.\Get-IntuneDeviceUser.ps1 -Platform Windows | Where-Object Status -eq 'Mismatch'
+.\Get-IntuneDeviceUserDrift.ps1 -Platform Windows | Where-Object Status -eq 'Mismatch'
 ```
 
 **Output:** a `Status` column of `Match`, `Mismatch`, `Shared`, `NoPrimaryUser`, `NoLoginData` or
@@ -220,7 +220,7 @@ diffable rather than an opaque blob.
 **Permissions:** `DeviceManagementManagedDevices.ReadWrite.All`, `User.Read.All`.
 
 > There is no bulk undo. Export the current state first with
-> `.\Get-IntuneDeviceUser.ps1 -OutputPath .\before.csv`.
+> `.\Get-IntuneDeviceUserDrift.ps1 -OutputPath .\before.csv`.
 >
 > A device with no last logged-on user is **skipped, never cleared**. Absence of sign-in data means
 > "not known", not "no user". Use `-ExcludeAutopilotProfile` with `-FromDrift`: on a shared device
@@ -285,7 +285,7 @@ record only and does not touch the device — if it ever checks in again it may 
 > the device is gone.** Confirm against your CMDB before acting on anything you cannot re-enrol.
 > Devices with no usable timestamp at all are reported and never acted on.
 
-### `Get-OutOfSupportDevice.ps1`
+### `Intune/Get-OutOfSupportDevice.ps1`
 
 Windows 10 and 11 ship as versions, and each version has its own end-of-servicing date. Past that
 date a device stops receiving security updates while continuing to report as managed and compliant

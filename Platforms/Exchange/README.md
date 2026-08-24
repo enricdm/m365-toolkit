@@ -29,7 +29,7 @@ Nothing needs editing inside a file to run it in your own tenant.
 | [`Mailboxes/Set-MailboxForwarding.ps1`](Mailboxes/Set-MailboxForwarding.ps1) | Sets server-side forwarding on one or more mailboxes | **Yes** | interactive (pre-existing EXO session) |
 | [`MailFlow/Block-MaliciousDomain.ps1`](MailFlow/Block-MaliciousDomain.ps1) | Blocks a domain in the Tenant Allow/Block List as Sender and URL | **Yes** | interactive (reuses an existing session) |
 | [`MailFlow/Test-PhishingSimulationRule.ps1`](MailFlow/Test-PhishingSimulationRule.ps1) | Traces both legs of a phishing-report transport rule and writes an evidence report | No | interactive |
-| [`MailFlow/Get-ProofpointLiteEligibility.ps1`](MailFlow/Get-ProofpointLiteEligibility.ps1) | Splits mailboxes above/below a mail-volume threshold for per-mailbox licensing | No | Graph, `Reports.Read.All` |
+| [`MailFlow/Get-MailboxReceiveVolume.ps1`](MailFlow/Get-MailboxReceiveVolume.ps1) | Splits mailboxes above/below a mail-volume threshold for per-mailbox licensing | No | Graph, `Reports.Read.All` |
 | [`Resources/Get-CountryResource.ps1`](Resources/Get-CountryResource.ps1) | Finds room/equipment mailboxes for a country across several weak signals | No | app-only cert **or** interactive |
 | [`Resources/Set-RoomMailbox.ps1`](Resources/Set-RoomMailbox.ps1) | Configures a room mailbox: booking policy, place metadata, who may reserve it | **Yes** | interactive |
 
@@ -39,7 +39,7 @@ Nothing needs editing inside a file to run it in your own tenant.
   `Set-RoomMailbox.ps1`; recommended for the rest.
 - **ExchangeOnlineManagement 3.0+** (`Install-Module ExchangeOnlineManagement`).
   `Test-PhishingSimulationRule.ps1` needs **3.7+** for `Get-MessageTraceV2`.
-- **Microsoft.Graph.Reports** — only for `Get-ProofpointLiteEligibility.ps1`
+- **Microsoft.Graph.Reports** — only for `Get-MailboxReceiveVolume.ps1`
   (`Install-Module Microsoft.Graph.Reports -Scope CurrentUser`).
 
 Roles and permissions:
@@ -50,7 +50,7 @@ Roles and permissions:
 | Exchange **Administrator** | `New-SharedCalendar.ps1`, `Set-RoomMailbox.ps1` (`New-Mailbox`, `Set-CalendarProcessing`, `Set-Place`) |
 | **Security Administrator** (or Organization Management) | `Block-MaliciousDomain.ps1` — Tenant Allow/Block List writes |
 | **View-Only Recipients** / message trace read | the two read-only MailFlow and Resources scripts |
-| Graph `Reports.Read.All` (admin consent) | `Get-ProofpointLiteEligibility.ps1` |
+| Graph `Reports.Read.All` (admin consent) | `Get-MailboxReceiveVolume.ps1` |
 
 ### App-only certificate auth
 
@@ -499,7 +499,7 @@ change record.
 > calls `Disconnect-ExchangeOnline` when it finishes, which will also close a
 > session you had open before running it.
 
-### `MailFlow/Get-ProofpointLiteEligibility.ps1`
+### `MailFlow/Get-MailboxReceiveVolume.ps1`
 
 Per-mailbox mail-security licensing turns on one number: how much mail each
 mailbox actually receives. Get it wrong in one direction and you buy protection
@@ -531,10 +531,10 @@ numbers can be reconciled against the portal instead of argued about.
 
 ```powershell
 # Default: 30-day window, threshold 150
-.\MailFlow\Get-ProofpointLiteEligibility.ps1
+.\MailFlow\Get-MailboxReceiveVolume.ps1
 
 # Longer window and a different threshold, to a chosen file
-.\MailFlow\Get-ProofpointLiteEligibility.ps1 -Period D180 -MailThreshold 100 `
+.\MailFlow\Get-MailboxReceiveVolume.ps1 -Period D180 -MailThreshold 100 `
     -ExportCsvPath .\Exports\eligibility-D180.csv
 ```
 
@@ -704,11 +704,11 @@ defects, all of them reachable in normal use.
   session you had open before you ran it.
 - **Message trace retains roughly 10 days.** A larger `-DaysBack` returns nothing for the older part
   of the range rather than warning that it cannot cover it.
-- **Graph usage data lags about two days**, so `Get-ProofpointLiteEligibility.ps1` is never quite
+- **Graph usage data lags about two days**, so `Get-MailboxReceiveVolume.ps1` is never quite
   current. Fine for a licensing decision, wrong for anything operational.
 - **Six of these scripts carry a banner header rather than comment-based help** —
   `Edit-MailGroupMember`, `New-FaxDistributionList`, `New-MailGroup`, `New-SharedMailbox`,
-  `Get-ProofpointLiteEligibility` and `Test-PhishingSimulationRule`. They document themselves
+  `Get-MailboxReceiveVolume` and `Test-PhishingSimulationRule`. They document themselves
   perfectly well in an editor, but `Get-Help -Full` returns almost nothing for them.
 - **`Set-RoomMailbox.ps1` and `Get-CountryResource.ps1` ship with placeholder naming tokens.**
   `-MarkerPrefix`, `-AddressPrefix`, the city/site codes and the calendar naming convention follow

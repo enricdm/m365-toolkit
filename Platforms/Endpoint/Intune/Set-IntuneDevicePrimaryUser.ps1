@@ -59,7 +59,7 @@
     Rights   : WRITES to Intune when -Execute is used.
 
     There is no bulk undo. Export the current state before applying:
-        .\Get-IntuneDeviceUser.ps1 -OutputPath .\before.csv
+        .\Get-IntuneDeviceUserDrift.ps1 -OutputPath .\before.csv
 
     A device with no last logged-on user is skipped, never cleared. Absence of
     sign-in data means "not known", not "no user".

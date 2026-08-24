@@ -26,7 +26,7 @@
     Free-text governance metadata stamped into the application's Notes field.
 
 .EXAMPLE
-    .\New-ClientApp.ps1 -Name 'APP-Client-01','APP-Client-02' -OwnerUpn 'admin@contoso.com'
+    .\New-M2MAppRegistration.ps1 -Name 'APP-Client-01','APP-Client-02' -OwnerUpn 'admin@contoso.com'
 
 .NOTES
     When to use  : A supplier asks for five or more app registrations in one batch. For one or two the portal is faster.

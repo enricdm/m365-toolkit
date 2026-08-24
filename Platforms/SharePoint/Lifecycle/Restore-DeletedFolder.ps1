@@ -27,12 +27,12 @@
 
 .EXAMPLE
     # Report only (no changes) - confirm count, size, date range
-    .\Restore-OneDriveFolder.ps1 -SiteUrl 'https://contoso-my.sharepoint.com/personal/user_contoso_com' `
+    .\Restore-DeletedFolder.ps1 -SiteUrl 'https://contoso-my.sharepoint.com/personal/user_contoso_com' `
         -PathFilter '*Documents/Reports*' -ClientId '<client-id>' -Tenant 'contoso.onmicrosoft.com'
 
 .EXAMPLE
     # Perform the restore
-    .\Restore-OneDriveFolder.ps1 -SiteUrl 'https://contoso-my.sharepoint.com/personal/user_contoso_com' `
+    .\Restore-DeletedFolder.ps1 -SiteUrl 'https://contoso-my.sharepoint.com/personal/user_contoso_com' `
         -PathFilter '*Documents/Reports*' -ClientId '<client-id>' -Tenant 'contoso.onmicrosoft.com' -Execute
 
 .NOTES

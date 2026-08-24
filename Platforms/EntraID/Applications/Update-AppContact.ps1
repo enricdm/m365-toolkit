@@ -22,7 +22,7 @@
     App-registration tracking workbook (.xlsx) with an 'App Tracking' worksheet.
 
 .PARAMETER SamlCsvPath
-    Path to the SAML notification-email CSV produced by Export-SamlNotificationEmail.ps1.
+    Path to the SAML notification-email CSV produced by Export-SamlCertificateExpiry.ps1.
 
 .PARAMETER SpCsvPath
     Optional service-principal export CSV (needs 'appId' and 'homepage' columns).
@@ -71,7 +71,7 @@ param(
     # App-registration tracking workbook. No copy exists in this repo, so it must be supplied.
     [Parameter(Mandatory)]
     [string]$ExcelPath,
-    # Output of Export-SamlNotificationEmail.ps1 (same folder as this script). No live copy
+    # Output of Export-SamlCertificateExpiry.ps1 (same folder as this script). No live copy
     # in the repo either — point this at the CSV that script produced.
     [Parameter(Mandatory)]
     [string]$SamlCsvPath,

@@ -30,17 +30,17 @@ one does, this README points it out.
 |---|---|:---:|---|
 | **Applications** | | | |
 | [`Export-AppRegistration.ps1`](Applications/Export-AppRegistration.ps1) | Full app-registration inventory: owners, credentials, API permissions, sign-in activity, hygiene flags | No | interactive |
-| [`Export-SamlNotificationEmail.ps1`](Applications/Export-SamlNotificationEmail.ps1) | Lists SAML apps with their certificate expiry date and notification addresses | No | interactive |
-| [`New-ClientApp.ps1`](Applications/New-ClientApp.ps1) | Bulk-creates client app registrations + service principals for cert-based M2M auth | **Yes** | interactive |
+| [`Export-SamlCertificateExpiry.ps1`](Applications/Export-SamlCertificateExpiry.ps1) | Lists SAML apps with their certificate expiry date and notification addresses | No | interactive |
+| [`New-M2MAppRegistration.ps1`](Applications/New-M2MAppRegistration.ps1) | Bulk-creates client app registrations + service principals for cert-based M2M auth | **Yes** | interactive |
 | [`Update-AppContact.ps1`](Applications/Update-AppContact.ps1) | Resolves a responsible human per app through five ranked signals, with a confidence score, and writes them into the tracking workbook | No (writes a file) | interactive |
 | [`Update-FederatedCredential.ps1`](Applications/Update-FederatedCredential.ps1) | Replaces an app's GitHub OIDC credentials with one all-branches FFIC per repository | **Yes** (destructive) | interactive |
 | **ConditionalAccess** | | | |
 | [`Get-MfaExemption.ps1`](ConditionalAccess/Get-MfaExemption.ps1) | Users genuinely exempt from MFA — exception-group members and direct exclusions, nested groups expanded. `-AllExclusions` for the full dump | No | app-only + cert, or interactive |
 | [`Get-ExemptionSignInActivity.ps1`](ConditionalAccess/Get-ExemptionSignInActivity.ps1) | Adds 30-day sign-in telemetry to those exemptions and says which can be dropped or narrowed | No | app-only + cert, or interactive |
 | [`Export-ConditionalAccessPolicy.ps1`](ConditionalAccess/Export-ConditionalAccessPolicy.ps1) | Exports all CA policies with every GUID resolved to a display name | No | interactive |
-| [`Export-VpnSignInLog.ps1`](ConditionalAccess/Export-VpnSignInLog.ps1) | Sign-ins for a VPN application plus Identity Protection risk detections and risky users | No | app-only + cert, or interactive |
+| [`Export-VpnSignInRisk.ps1`](ConditionalAccess/Export-VpnSignInRisk.ps1) | Sign-ins for a VPN application plus Identity Protection risk detections and risky users | No | app-only + cert, or interactive |
 | **Identity** | | | |
-| [`Get-MissingLocationReport.ps1`](Identity/Get-MissingLocationReport.ps1) | Categorises accounts with no `usageLocation` into eight actionable buckets | No | interactive |
+| [`Get-MissingUsageLocation.ps1`](Identity/Get-MissingUsageLocation.ps1) | Categorises accounts with no `usageLocation` into eight actionable buckets | No | interactive |
 | [`Export-CountryUserReport.ps1`](Identity/Export-CountryUserReport.ps1) | Country-scoped users/groups/licenses as a three-sheet workbook, delivered to SharePoint | **Yes** (uploads a file with `-Execute`) | managed identity |
 | [`New-SecurityGroup.ps1`](Identity/New-SecurityGroup.ps1) | Creates security groups from a definition file and adds members | **Yes** (with `-Execute`) | interactive |
 | [`New-AdminAccount.ps1`](Identity/New-AdminAccount.ps1) | Creates a cloud-only admin account derived from a person's ordinary account, with TAP and per-user MFA | **Yes** | interactive |
@@ -89,7 +89,7 @@ retains interactive sign-in logs for roughly 30 days.
 
 **Domain / country data**
 
-`Update-AppContact.ps1` and `Get-MissingLocationReport.ps1` read their
+`Update-AppContact.ps1` and `Get-MissingUsageLocation.ps1` read their
 domain-to-country mapping from a shared data file:
 
 ```
@@ -135,7 +135,7 @@ exactly that case. Neither source alone is enough to call an app abandoned.
 .\Applications\Export-AppRegistration.ps1 -TenantId '<tenant-id>' -OutputPath .\Exports
 ```
 
-#### `Export-SamlNotificationEmail.ps1`
+#### `Export-SamlCertificateExpiry.ps1`
 
 A SAML signing certificate expires and the application stops authenticating.
 Entra will warn about it, but only to the addresses in
@@ -152,7 +152,7 @@ found zero SAML apps instead of quietly writing an empty CSV.
 
 ```powershell
 # SAML signing certificates and who gets warned when they expire
-.\Applications\Export-SamlNotificationEmail.ps1 -OutputPath .\Exports\saml.csv
+.\Applications\Export-SamlCertificateExpiry.ps1 -OutputPath .\Exports\saml.csv
 ```
 
 The CSV it produces is also the Tier 1 input for `Update-AppContact.ps1` below —
@@ -179,7 +179,7 @@ diffing two exports against each other.
 .\ConditionalAccess\Export-ConditionalAccessPolicy.ps1 -TenantId '<tenant-id>'
 ```
 
-#### `Export-VpnSignInLog.ps1`
+#### `Export-VpnSignInRisk.ps1`
 
 This one came out of a credential-exposure review of the VPN. The sign-in log on
 its own answers a narrow question — this account signed in, from this IP, and it
@@ -200,10 +200,10 @@ Sentinel instead, if they are archived there.
 
 ```powershell
 # VPN sign-ins + Identity Protection risk, last 30 days
-.\ConditionalAccess\Export-VpnSignInLog.ps1 -TenantId '<tenant-id>' -AppFilter 'Forti' -Interactive
+.\ConditionalAccess\Export-VpnSignInRisk.ps1 -TenantId '<tenant-id>' -AppFilter 'Forti' -Interactive
 ```
 
-#### `Get-MissingLocationReport.ps1`
+#### `Get-MissingUsageLocation.ps1`
 
 `usageLocation` looks like a minor attribute and is not one. Without it you cannot
 assign a license at all, and in a multi-country tenant it determines which services
@@ -227,7 +227,7 @@ purpose.
 
 ```powershell
 # Accounts with no usageLocation, sorted into eight buckets (A-G, X)
-.\Identity\Get-MissingLocationReport.ps1 -CsvPath .\proofpoint_export.csv
+.\Identity\Get-MissingUsageLocation.ps1 -CsvPath .\proofpoint_export.csv
 ```
 
 #### Password age, without a script
@@ -253,7 +253,7 @@ That field is empty often enough on synchronised accounts that folding it into t
 compliant bucket quietly inflates the pass rate — which is the same mistake, in a
 smaller place, as counting an empty read as a negative result.
 
-**Input:** parameters only, except `Get-MissingLocationReport.ps1`, which needs a
+**Input:** parameters only, except `Get-MissingUsageLocation.ps1`, which needs a
 directory-export CSV containing `Email`, `SSO ID`, `Location` columns.
 **Output:** timestamped CSV/JSON under each script's `Exports` folder (or `-OutputPath`).
 **Permissions:** the read-only scopes in the table above.
@@ -382,7 +382,7 @@ nobody owns.
 ```
 
 **Input:** a tracking workbook with an `App Tracking` sheet, the CSV from
-`Export-SamlNotificationEmail.ps1`, and optionally a service-principal export
+`Export-SamlCertificateExpiry.ps1`, and optionally a service-principal export
 (without it Tier 5 is skipped). Also `-AdminAccountDomain` and
 `-CorporateDomainPattern`, which must match your tenant's naming.
 **Output:** `<input>_enriched.xlsx` plus a `_manual_review.csv` listing everything
@@ -392,7 +392,7 @@ it could not resolve.
 > **Note:** it writes only files, never the directory. `-WhatIf` skips the write;
 > existing values in the contact column are preserved unless you pass `-Force`.
 
-### `New-ClientApp.ps1`
+### `New-M2MAppRegistration.ps1`
 
 > **Warning: creates directory objects.** One app registration plus one service
 > principal per name, with the supplied owner attached to both.
@@ -415,7 +415,7 @@ warning rather than duplicated, so re-running after a partial failure is safe.
 Governance metadata is stamped into the Notes field of every app it creates.
 
 ```powershell
-.\Applications\New-ClientApp.ps1 -Name 'APP-Client-01','APP-Client-02' `
+.\Applications\New-M2MAppRegistration.ps1 -Name 'APP-Client-01','APP-Client-02' `
     -OwnerUpn 'admin@contoso.com'
 ```
 

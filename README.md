@@ -21,7 +21,7 @@ of it — at [enricdiaz.com/projects](https://enricdiaz.com/projects).
 | [**Entra ID**](Platforms/EntraID/) | 16 | App registrations, federated credentials, Conditional Access, MFA exclusions, usage location, licence reclamation, device object cleanup |
 | [**Endpoint**](Platforms/Endpoint/) | 10 | Intune assignments and group membership, device and configuration exports, primary user and category maintenance, stale-device cleanup, out-of-support Windows, desktop Visio/Project usage |
 | [**Exchange Online**](Platforms/Exchange/) | 11 | Mail groups, shared mailboxes and calendars, forwarding, mail-flow protection and verification, resource rooms |
-| [**SharePoint Online**](Platforms/SharePoint/) | 7 | Site permissions, storage quotas and notifications, OneDrive recovery |
+| [**SharePoint Online**](Platforms/SharePoint/) | 6 | Site permissions, storage quotas and notifications, OneDrive recovery |
 | [**Active Directory**](Platforms/ActiveDirectory/) | 2 | proxyAddresses repair for hybrid identity, SMBv1 network probe |
 | [**Power Platform**](Platforms/PowerPlatform/) | 2 | Environment role audit, Environment Maker grants |
 | [**Purview**](Platforms/Purview/) | 1 | Sensitivity label and encryption removal |
@@ -85,6 +85,14 @@ resolves country from a domain.
 `Invoke-GraphPaged`, which handles `@odata.nextLink` correctly. It exists because three scripts
 each carried their own copy of that function, one copy got a bug fix and the other two didn't —
 and the resulting phantom records silently disabled a safety check on a bulk delete.
+
+`Platforms/_Shared/Tools/Clear-M365TokenCache.ps1` clears the machine-wide MSAL, WAM and
+`.IdentityService` token caches, which is the fix for a PowerShell session stuck signing in as the
+wrong account. It lives here rather than under a platform because it is not scoped to one: clearing
+those caches signs you out of **every** Microsoft 365 tool on that profile — Teams, Outlook, the
+Graph SDK — not just the one that was misbehaving. It was called `Clear-SpoTokenCache.ps1` and sat
+under `SharePoint/`, which described where the symptom usually shows up rather than what the script
+touches.
 
 ---
 

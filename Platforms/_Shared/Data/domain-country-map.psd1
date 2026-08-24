@@ -9,7 +9,7 @@
     #
     #  Consumed by:
     #    Platforms/EntraID/Applications/Update-AppContact.ps1
-    #    Platforms/EntraID/Identity/Get-MissingLocationReport.ps1
+    #    Platforms/EntraID/Identity/Get-MissingUsageLocation.ps1
     #
     #  Format note: keep this file to plain hashtables and string arrays with
     #  single-quoted values, and no expressions. That subset can be parsed by a

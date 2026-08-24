@@ -1,27 +1,26 @@
 # SharePoint Online
 
-Administration scripts for SharePoint Online and OneDrive for Business: connection helpers,
-permission auditing, storage governance, and lifecycle/recovery work. Most are read-only
-reporting tools; the three that write are marked below and each has a dry-run mode.
+Administration scripts for SharePoint Online and OneDrive for Business: permission auditing,
+storage governance, and lifecycle/recovery work. Most are read-only reporting tools; the three
+that write are marked below and each has a dry-run mode.
 
 ## Index
 
 | Script | What it does | Changes state | Auth |
 |---|---|:---:|---|
-| [`Clear-SpoTokenCache.ps1`](Clear-SpoTokenCache.ps1) | Purges local MSAL/WAM token caches, then reconnects — fixes "stuck identity" sign-ins | No (local caches only) | interactive |
 | [`Permissions/Get-SiteOwnerStatus.ps1`](Permissions/Get-SiteOwnerStatus.ps1) | Lists each site's owners and whether their accounts are still enabled | No | app-only + cert |
 | [`Permissions/Get-EveryoneExceptExternalGrant.ps1`](Permissions/Get-EveryoneExceptExternalGrant.ps1) | Finds "Everyone except external users" grants at site and list level | No | interactive |
 | [`Storage/Get-SiteStorage.ps1`](Storage/Get-SiteStorage.ps1) | Reports storage usage and quota per site collection | No | interactive |
 | [`Storage/Set-SiteStorageQuota.ps1`](Storage/Set-SiteStorageQuota.ps1) | Sets the storage quota on one or more sites | **Yes** | interactive |
 | [`Storage/Send-StorageNotification.ps1`](Storage/Send-StorageNotification.ps1) | Emails site owners whose sites are over their storage threshold | **Yes** (sends mail) | app-only + cert |
-| [`Lifecycle/Restore-OneDriveFolder.ps1`](Lifecycle/Restore-OneDriveFolder.ps1) | Restores a deleted folder subtree from a recycle bin | **Yes** | app-only + cert |
+| [`Lifecycle/Restore-DeletedFolder.ps1`](Lifecycle/Restore-DeletedFolder.ps1) | Restores a deleted folder subtree from a recycle bin | **Yes** | app-only + cert |
 
 ## Requirements
 
-- **PowerShell 7.2+** (tested on 7.6.x). `Get-SiteStorage.ps1`, `Set-SiteStorageQuota.ps1` and
-  `Clear-SpoTokenCache.ps1` use the SPO module, which also works on Windows PowerShell 5.1.
+- **PowerShell 7.2+** (tested on 7.6.x). `Get-SiteStorage.ps1` and `Set-SiteStorageQuota.ps1` use
+  the SPO module, which also works on Windows PowerShell 5.1.
 - **Modules**
-  - `PnP.PowerShell` — the connection, permission and lifecycle scripts
+  - `PnP.PowerShell` — the permission and lifecycle scripts
   - `Microsoft.Online.SharePoint.PowerShell` — the storage scripts
   - `ImportExcel` — `Send-StorageNotification.ps1` only
 - **Roles:** SharePoint Administrator for tenant-wide operations; Site Collection Admin on each
@@ -51,25 +50,20 @@ Upload the certificate's public key to the app and keep the private key in
 
 ## Usage
 
-### `Clear-SpoTokenCache.ps1`
+### Stuck sign-ins: the token cache fix lives elsewhere
 
-The symptom is specific and maddening: `Connect-SPOService` keeps signing you in
-as the wrong account, or into a tenant you no longer work with, and
-`Disconnect-SPOService` does nothing about it. The token is not in the module. It
-is in the local identity caches — MSAL, the WAM token broker, `.IdentityService` —
-and nothing in the SPO module reaches them.
+The symptom shows up here more than anywhere else — `Connect-SPOService` keeps
+signing you in as the wrong account, or into a tenant you no longer work with, and
+`Disconnect-SPOService` does nothing about it, because the token is not in the
+module. It is in the local identity caches, and nothing in the SPO module reaches
+them.
 
-Eight lines, with a side effect considerably larger than the name suggests: those
-caches are shared across the machine. Clearing them signs you out of *every*
-Microsoft 365 tool on that profile, not just SharePoint, so expect fresh sign-ins
-in Teams, Outlook and the Graph SDK afterwards. Close the PowerShell window and
-open a new one before running it — a session that has already loaded the identity
-assemblies can write the caches back on exit.
-
-```powershell
-# Fix a sign-in stuck on the wrong account, then reconnect
-.\Clear-SpoTokenCache.ps1 -AdminUrl 'https://contoso-admin.sharepoint.com'
-```
+The fix is [`_Shared/Tools/Clear-M365TokenCache.ps1`](../_Shared/Tools/Clear-M365TokenCache.ps1),
+and it is not in this folder because it is not a SharePoint tool. It clears the
+machine-wide MSAL, WAM and `.IdentityService` caches, which signs you out of
+*every* Microsoft 365 tool on that profile — Teams, Outlook, the Graph SDK. It
+used to be called `Clear-SpoTokenCache.ps1` and sat here, and that name told you
+it was SharePoint-scoped when its blast radius is the whole machine.
 
 ### `Storage/Get-SiteStorage.ps1`
 
@@ -273,7 +267,7 @@ header row is auto-detected, so decorative banner rows above it do not break par
 > run; `-DelayMs` throttles; rows without a valid recipient are skipped and logged rather than guessed at.
 > Use `-WhatIf` and read the log before every live run — there is no unsend.
 
-### `Lifecycle/Restore-OneDriveFolder.ps1`
+### `Lifecycle/Restore-DeletedFolder.ps1`
 
 This is recovery work, and it arrives urgent: someone synced a library, tidied up
 what they thought was a local copy, and took a folder tree with them. The
@@ -296,11 +290,11 @@ throttling.
 
 ```powershell
 # Report only — no changes
-.\Lifecycle\Restore-OneDriveFolder.ps1 -SiteUrl 'https://contoso-my.sharepoint.com/personal/user_contoso_com' `
+.\Lifecycle\Restore-DeletedFolder.ps1 -SiteUrl 'https://contoso-my.sharepoint.com/personal/user_contoso_com' `
     -PathFilter '*Documents/Reports*' -ClientId '<client-id>' -Tenant 'contoso.onmicrosoft.com'
 
 # Restore
-.\Lifecycle\Restore-OneDriveFolder.ps1 -SiteUrl 'https://contoso-my.sharepoint.com/personal/user_contoso_com' `
+.\Lifecycle\Restore-DeletedFolder.ps1 -SiteUrl 'https://contoso-my.sharepoint.com/personal/user_contoso_com' `
     -PathFilter '*Documents/Reports*' -ClientId '<client-id>' -Tenant 'contoso.onmicrosoft.com' -Execute
 ```
 
@@ -338,10 +332,6 @@ throttling.
   having `Sites.FullControl.All` is not always sufficient for the per-site PnP calls, and a site
   that cannot be opened is reported as an error row rather than silently skipped — but it is still
   a gap in the scan, and a scan with gaps is what this script exists to avoid.
-- **`Clear-SpoTokenCache.ps1` signs you out of everything.** The MSAL and WAM caches are per-profile
-  and shared across every Microsoft 365 tool on the machine. Teams, Outlook and the Graph SDK will
-  all want a fresh sign-in afterwards. It is eight lines with a blast radius considerably larger
-  than its name.
 - **`PercentUsed` from `Get-SiteStorage.ps1` is not a ranking.** In a pooled-storage tenant the cap
   it divides by is a shared ceiling, not a per-site allocation, so the percentage is meaningful only
   for sites that have been given an explicit quota. Do not sort by it and act on the top rows.
@@ -353,7 +343,7 @@ throttling.
   ordinary way that is tenant-wide send-as-anyone. The application access policy in the requirements
   section is not optional in any environment you would want to defend, and nothing in the script
   checks that you applied it — it works identically either way.
-- **`Restore-OneDriveFolder.ps1` restores into a live site.** Names that have since been reused will
+- **`Restore-DeletedFolder.ps1` restores into a live site.** Names that have since been reused will
   collide, and only first-stage recycle bin items are eligible by default. Neither is a defect, but
   both surprise people mid-recovery.
 - **`Get-SiteOwnerStatus.ps1` and `Get-SiteStorage.ps1` default their output to the current

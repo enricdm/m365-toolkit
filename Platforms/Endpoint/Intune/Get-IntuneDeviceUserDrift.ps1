@@ -35,17 +35,17 @@
 
 .EXAMPLE
     # Everything, to the pipeline
-    .\Get-IntuneDeviceUser.ps1
+    .\Get-IntuneDeviceUserDrift.ps1
 
 .EXAMPLE
     # Windows only, with Autopilot, treating two profiles as shared devices
-    .\Get-IntuneDeviceUser.ps1 -Platform Windows -IncludeAutopilot `
+    .\Get-IntuneDeviceUserDrift.ps1 -Platform Windows -IncludeAutopilot `
         -SharedProfileName 'AP-Classrooms','AP-MeetingRooms' `
         -OutputPath .\Exports\device-users.csv
 
 .EXAMPLE
     # Only the rows that need attention
-    .\Get-IntuneDeviceUser.ps1 -Platform Windows | Where-Object Status -eq 'Mismatch'
+    .\Get-IntuneDeviceUserDrift.ps1 -Platform Windows | Where-Object Status -eq 'Mismatch'
 
 .NOTES
     When to use  : Before a licence-reassignment or device-retirement campaign, when you need to know who each machine actually belongs to.

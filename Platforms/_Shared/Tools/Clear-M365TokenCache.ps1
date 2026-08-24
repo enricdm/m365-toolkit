@@ -19,10 +19,10 @@
     Only purge the caches; do not connect afterwards.
 
 .EXAMPLE
-    .\Clear-SpoTokenCache.ps1 -AdminUrl 'https://contoso-admin.sharepoint.com'
+    .\Clear-M365TokenCache.ps1 -AdminUrl 'https://contoso-admin.sharepoint.com'
 
 .EXAMPLE
-    .\Clear-SpoTokenCache.ps1 -AdminUrl 'https://contoso-admin.sharepoint.com' -SkipConnect
+    .\Clear-M365TokenCache.ps1 -AdminUrl 'https://contoso-admin.sharepoint.com' -SkipConnect
 
 .NOTES
     When to use  : You have spent twenty minutes fighting an access-denied that should not happen, with the wrong account.

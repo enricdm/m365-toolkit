@@ -35,7 +35,7 @@
     which ships with placeholder contoso.* domains — replace them with your own.
 
 .EXAMPLE
-    .\Get-MissingLocationReport.ps1 -CsvPath ".\proofpoint_export.csv"
+    .\Get-MissingUsageLocation.ps1 -CsvPath ".\proofpoint_export.csv"
 
 .NOTES
     When to use  : Proofpoint (or anything else fed from Entra) has users with no Location and you need to know which are a real problem and which are noise.

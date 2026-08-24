@@ -27,10 +27,10 @@
   Explicit application id(s). Supplying these skips discovery entirely.
 
 .EXAMPLE
-  .\Export-VpnSignInLog.ps1 -TenantId '<tenant-id>' -Interactive
+  .\Export-VpnSignInRisk.ps1 -TenantId '<tenant-id>' -Interactive
 
 .EXAMPLE
-  .\Export-VpnSignInLog.ps1 -TenantId '<tenant-id>' -AppId '<client-id>' -DaysBack 14 `
+  .\Export-VpnSignInRisk.ps1 -TenantId '<tenant-id>' -AppId '<client-id>' -DaysBack 14 `
       -ClientId '<client-id>' -CertThumbprint '<cert-thumbprint>'
 
 .NOTES

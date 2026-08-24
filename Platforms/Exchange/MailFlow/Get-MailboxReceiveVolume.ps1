@@ -1,5 +1,5 @@
 # ==============================================================================
-# Get-ProofpointLiteEligibility.ps1
+# Get-MailboxReceiveVolume.ps1
 #
 # Counts, per mailbox, how much mail was received over a period, and splits the
 # tenant into "under the threshold" and "at or over it" — the input a
