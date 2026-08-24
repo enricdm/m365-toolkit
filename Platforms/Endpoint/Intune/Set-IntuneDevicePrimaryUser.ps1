@@ -62,7 +62,7 @@
     A device with no last logged-on user is skipped, never cleared. Absence of
     sign-in data means "not known", not "no user".
 
-    Replaces (merged): Intune-UpdatePrimaryUser.ps1
+    Replaces: one earlier script that updated the primary user on Intune devices.
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'FromDrift')]

@@ -66,9 +66,10 @@
     Uses the /beta endpoint for the collections that only exist there (settings
     catalog, remediation scripts). Beta contracts can change without notice.
 
-    Replaces (merged): DeviceConfiguration_Get.ps1, Get-DeviceConfigurationPolicy.ps1,
-    ManagedAppPolicy_Export.ps1, Get-DeviceManagementScripts.ps1,
-    Get-Win32AppScripts.ps1, Application_Get_Assign.ps1, "Backup Intune.ps1"
+    Replaces (merged): seven scripts that each exported one slice of the tenant
+    configuration - device configuration profiles, configuration policies, app
+    protection policies, platform scripts, Win32 app detection scripts and
+    application assignments - plus one that wrapped a third-party backup module.
 
     The first six authenticated with ADAL (Microsoft.IdentityModel.Clients.
     ActiveDirectory), retired by Microsoft; the seventh wrapped the third-party

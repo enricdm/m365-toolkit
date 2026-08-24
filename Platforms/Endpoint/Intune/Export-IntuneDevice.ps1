@@ -73,10 +73,10 @@
     Scopes   : DeviceManagementManagedDevices.Read.All, Device.Read.All (delta mode only)
     Rights   : read-only. This script never writes to Intune.
 
-    Replaces (merged): Export-DevicesIntune.ps1, Export-DevicesIntune-Delta.ps1,
-    Export-DevicesIntune-Delta-incremental.ps1, Get-RegisteredIntuneDevices.ps1
-    (two divergent copies), "Export BYOD.ps1", "Export COPE.ps1",
-    Export-AndroidDedicated.ps1
+    Replaces (merged): seven device exports - a base export, two delta variants of
+    it, a device inventory that existed as two divergent copies, and three that
+    differed from each other only in which Android enrollment type they filtered
+    on. Those three are now the -EnrollmentType parameter.
 
     The originals authenticated with Connect-MSGraph from the retired Intune
     PowerShell SDK and refreshed the bearer token by hand on HTTP 401. Connect-MgGraph

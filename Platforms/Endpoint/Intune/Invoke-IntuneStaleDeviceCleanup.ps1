@@ -71,8 +71,11 @@
     NOT evidence the device is gone, lost or decommissioned. Confirm against your
     CMDB / asset register before acting on anything you cannot re-enrol.
 
-    Replaces (merged): Invoke-IntuneCleanup.ps1, Invoke-IntuneCleanup-exportCSV.ps1
-    (two divergent copies), Retire_DevicesIntune.ps1, Wipe_DevicesIntune.ps1
+    Replaces (merged): four scripts - a stale-device cleanup that existed as two
+    divergent copies, one that retired devices and one that wiped them. Retire and
+    Delete are the -Action values here. Wipe is deliberately not carried over: a
+    factory reset driven by a staleness query destroys user data on what is very
+    often a device that is merely switched off.
 #>
 
 [CmdletBinding()]

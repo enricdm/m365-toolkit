@@ -395,8 +395,10 @@ Pre-remediation detection output column, or via Graph `deviceHealthScripts` run 
 ## Known rough edges
 
 - **The `Intune/` and `Remediations/` scripts have not been run against a live tenant from this
-  repo.** They are verified statically — all parse, PSScriptAnalyzer is clean, comment-based help
-  renders. Test in a non-production tenant first, especially the three that write.
+  repo.** They are verified statically — all parse, parameter sets bind, comment-based help
+  renders, and PSScriptAnalyzer reports nothing beyond `PSAvoidUsingWriteHost`, which these
+  scripts trigger deliberately: they are interactive tools whose progress output is the point.
+  Test in a non-production tenant first, especially the three that write.
 - **`Set-IntuneDeviceCategory.ps1` in `Subnet` mode is slow by construction** (one Graph call per
   device). There is no batch endpoint that returns `subnetAddress`.
 - **Several collections only exist on Graph `/beta`** — settings catalog, remediation scripts,

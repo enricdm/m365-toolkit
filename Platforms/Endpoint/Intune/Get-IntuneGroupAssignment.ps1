@@ -59,9 +59,9 @@
     not appear here by design - they still apply to the devices in your group.
     -IncludeEmpty shows which object types were actually queried.
 
-    Replaces (merged): Get-IntuneAssignmentsforEntraIDGroup.ps1,
-    Get-IntuneAssignmentsforEntraIDGroup_v2.ps1 (two divergent copies),
-    Get-AssignationsfromGroup.ps1, Get-AssignedfromGroup.ps1
+    Replaces (merged): four scripts that reported what is assigned to an Entra ID
+    group. Two were the same original at different revisions, kept side by side;
+    the other two covered fewer object types than this one does.
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'ByName')]

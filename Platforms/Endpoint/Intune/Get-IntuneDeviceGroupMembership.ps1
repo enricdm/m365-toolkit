@@ -62,8 +62,9 @@
     expanded. If your assignment model relies on nested groups, treat this output as a
     starting point rather than the final answer.
 
-    Replaces (merged): Get-ManagedDeviceGroupMembership.ps1 (two divergent copies),
-    Export-DevicesFromUserGroup.ps1
+    Replaces (merged): a device group-membership report that existed as two
+    divergent copies, plus a third script that exported the devices belonging to
+    the members of a user group. Both directions are parameters here.
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'ByDevice')]

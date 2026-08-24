@@ -62,10 +62,11 @@
     most non-Windows platforms. Those rows are reported as 'NoLoginData', which means
     "not known", not "unused".
 
-    Replaces (merged): Get-LastLogOnUser.ps1, Get-LastLogOnUser_V2.ps1,
-    Export-IntuneLastLoggedOnUser.ps1, Audit-Intune-Windows-LastVsPrimary.ps1,
-    Get-Intune-Dev_UserLogins.ps1, Get-IntuneDevice-LastLogOn.ps1,
-    ShortOne-UserLastLog.ps1, UserLastLog.ps1
+    Replaces (merged): eight scripts that all answered some version of "who last
+    signed in to this device". Several were copies of one another at different
+    revisions, one compared the last logged-on user against the assigned primary
+    user, and one produced a shortened form of the same report. The comparison and
+    the output shape are options here rather than separate files.
 #>
 
 [CmdletBinding()]
