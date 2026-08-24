@@ -122,11 +122,24 @@ function Get-GroupName($id) {
     $groupNameCache[$id] = $n; return $n
 }
 $groupUserCache = @{}
+# Groups whose membership could not be read. Tracked because a failed expansion here
+# silently SHRINKS the exclusion list: the users behind that group simply never appear,
+# and the report then understates how many people are exempt from MFA. A short list is
+# the dangerous failure mode for this particular report, so it is reported loudly at the
+# end rather than swallowed.
+$unresolvedGroups = [System.Collections.Generic.List[string]]::new()
 function Get-TransitiveUserIds($groupId) {
     if ($groupUserCache.ContainsKey($groupId)) { return $groupUserCache[$groupId] }
-    $ids = Get-MgGroupTransitiveMember -GroupId $groupId -All -ErrorAction SilentlyContinue |
-    Where-Object { $_.AdditionalProperties['@odata.type'] -eq '#microsoft.graph.user' } |
-    Select-Object -ExpandProperty Id
+    try {
+        $ids = Get-MgGroupTransitiveMember -GroupId $groupId -All -ErrorAction Stop |
+        Where-Object { $_.AdditionalProperties['@odata.type'] -eq '#microsoft.graph.user' } |
+        Select-Object -ExpandProperty Id
+    } catch {
+        $name = Get-GroupName $groupId
+        $unresolvedGroups.Add("$name ($groupId): $($_.Exception.Message)")
+        Write-Warn "Could not expand group '$name' - its members are MISSING from this report, which makes the exclusion count too LOW: $($_.Exception.Message)"
+        $ids = @()
+    }
     $groupUserCache[$groupId] = $ids; return $ids
 }
 
@@ -230,6 +243,14 @@ $groupStats | Sort-Object Users -Descending | Export-Csv -Path $diag -NoTypeInfo
 Write-Step "Done"
 Write-OK "Exported $($rows.Count) excluded users -> $csv"
 Write-OK "Exclusion-source breakdown -> $diag"
+
+# A group that could not be expanded means users are MISSING from the export, so the
+# total below is a floor rather than a count. Said here, in red, next to the number.
+if ($unresolvedGroups.Count -gt 0) {
+    Write-Warn ("{0} group(s) could not be expanded. The {1} figure above is a LOWER BOUND - the members of these groups are exempt but are NOT in the export:" -f $unresolvedGroups.Count, $rows.Count)
+    $unresolvedGroups | ForEach-Object { Write-Warn "    $_" }
+    Write-Warn "    Do not quote this total as the number of MFA-exempt users until these resolve."
+}
 Write-Host "`n   Top exclusion sources (which group/policy drives the count):" -ForegroundColor Cyan
 $groupStats | Sort-Object Users -Descending | Select-Object -First 12 | Format-Table -AutoSize
 

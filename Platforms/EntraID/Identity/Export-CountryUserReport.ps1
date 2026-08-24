@@ -166,7 +166,16 @@ foreach ($u in $users) {
     Write-Step "Processing $($u.UserPrincipalName)"
 
     # --- Licenses ---
-    $lic = Get-MgUserLicenseDetail -UserId $u.Id -ErrorAction SilentlyContinue
+    # A failed read must not become "this user has no licences". Both counts below are
+    # emitted as 'unknown' rather than 0 when the lookup fails, because this workbook is
+    # delivered to country IT and a silent 0 reads as a fact.
+    $licReadOk = $true
+    try {
+        $lic = Get-MgUserLicenseDetail -UserId $u.Id -ErrorAction Stop
+    } catch {
+        $licReadOk = $false; $lic = $null
+        Write-Warn "Licence lookup failed for $($u.UserPrincipalName): $($_.Exception.Message). Reported as unknown, not zero."
+    }
     $skuList = @($lic.SkuPartNumber | Where-Object { $_ })
     $friendlyAll = foreach ($s in $skuList) { Get-FriendlyLicense $s }
     foreach ($s in $skuList) {
@@ -179,7 +188,13 @@ foreach ($u in $users) {
     }
 
     # --- Groups ---
-    $memberOf = Get-MgUserMemberOf -UserId $u.Id -All -ErrorAction SilentlyContinue
+    $grpReadOk = $true
+    try {
+        $memberOf = Get-MgUserMemberOf -UserId $u.Id -All -ErrorAction Stop
+    } catch {
+        $grpReadOk = $false; $memberOf = @()
+        Write-Warn "Group membership lookup failed for $($u.UserPrincipalName): $($_.Exception.Message). Reported as unknown, not zero."
+    }
     $grpNames = @()
     foreach ($it in $memberOf) {
         if ($it.AdditionalProperties['@odata.type'] -eq '#microsoft.graph.group') {
@@ -215,9 +230,9 @@ foreach ($u in $users) {
             ManagerUPN        = $mgrUpn
             AccountEnabled    = $u.AccountEnabled
             CreatedDateTime   = if ($u.CreatedDateTime) { (Get-Date $u.CreatedDateTime).ToString('dd/MM/yyyy HH:mm:ss') } else { '' }
-            GroupCount        = $grpNames.Count
-            LicenseCount      = $skuList.Count
-            Licenses          = ($friendlyAll -join '; ')
+            GroupCount        = if ($grpReadOk) { $grpNames.Count } else { 'unknown' }
+            LicenseCount      = if ($licReadOk) { $skuList.Count } else { 'unknown' }
+            Licenses          = if ($licReadOk) { ($friendlyAll -join '; ') } else { 'unknown - lookup failed' }
         })
 }
 

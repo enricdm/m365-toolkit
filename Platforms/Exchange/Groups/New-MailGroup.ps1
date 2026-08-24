@@ -1,6 +1,9 @@
 <#
-    New-MailGroup.ps1 — Universal group creator (DL / Mail-Enabled SG / M365)
-    -------------------------------------------------------------------------
+.SYNOPSIS
+    Universal mail group creator - distribution list, mail-enabled security group
+    or Microsoft 365 group - with external members handled.
+
+.DESCRIPTION
     One script for the three group types, with the type chosen interactively at
     runtime:
       - External-member support: auto-creates MailContacts for non-tenant addresses

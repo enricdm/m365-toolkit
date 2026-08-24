@@ -1,15 +1,17 @@
 <#
-================================================================================
-    New-FaxDistributionList.ps1
+.SYNOPSIS
+    Provisions a distribution list that accepts mail from unauthenticated senders -
+    a fax gateway, a scanner, a multifunction printer, an alarm system.
 
-    Purpose : Provision a Fax-to-Mail distribution list in Exchange Online.
-
+.DESCRIPTION
     Fax gateways are the awkward case for a distribution list: they relay
     unauthenticated, so the default RequireSenderAuthenticationEnabled = $true
     silently drops every inbound fax with no NDR the requester ever sees. This
     script provisions the DL with that setting explicitly disabled and refuses
     to finish if it ends up enabled anyway.
-================================================================================
+
+    Nothing below is fax-specific beyond the defaults: any device that relays
+    without authenticating hits the same wall.
 
     NAMING CONVENTION
     -----------------

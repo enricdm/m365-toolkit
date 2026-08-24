@@ -234,8 +234,20 @@ for ($i = 0; $i -lt $rows.Count; $i += $BatchSize) {
             # Guard: does this group grant ONLY the target SKU, or is it a bundle?
             # Removing membership strips EVERYTHING the group assigns, so a bundle group
             # would cause collateral loss of other licenses. Skip + flag those.
+            #
+            # This read decides whether a removal is safe, so it must not fail open. If the
+            # answer cannot be obtained the group is skipped as though it WERE a bundle:
+            # a licence left in place costs a seat, one wrongly removed costs somebody
+            # their Office on Monday morning.
             $groupSkus = @()
-            try { $groupSkus = @((Get-MgGroup -GroupId $gid -Property AssignedLicenses).AssignedLicenses.SkuId) } catch {}
+            try {
+                $groupSkus = @((Get-MgGroup -GroupId $gid -Property AssignedLicenses -ErrorAction Stop).AssignedLicenses.SkuId)
+            } catch {
+                $removed.Add("group-SKIPPED-unverified:$gname ($($_.Exception.Message))")
+                $ok = $false
+                Write-Log "  [SKIP] $upn — could not read which licences '$gname' assigns, so it cannot be confirmed single-SKU: $($_.Exception.Message). Not removing. Re-run when the group is readable." 'WARN'
+                continue
+            }
             $otherSkus = @($groupSkus | Where-Object { $_ -and $_ -ne $skuId })
             if ($otherSkus.Count -gt 0) {
                 $otherNames = ($otherSkus | ForEach-Object { $sid = $_; (Get-MgSubscribedSku -All | Where-Object SkuId -eq $sid).SkuPartNumber }) -join ','

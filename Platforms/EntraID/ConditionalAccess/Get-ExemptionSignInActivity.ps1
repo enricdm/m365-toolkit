@@ -127,9 +127,16 @@ foreach ($t in $targets) {
     $n++; Write-Progress -Activity "Sign-in pull" -Status "$n / $($targets.Count)  $($t.UPN)" -PercentComplete ($n * 100 / [Math]::Max(1, $targets.Count))
     $key = if ($t.Id) { "userId eq '$($t.Id)'" } else { "userPrincipalName eq '$($t.UPN)'" }
     $base = "$key and createdDateTime ge $start"
+    # Both queries must be tracked, because the Signal derived below turns "no events"
+    # into "drop the exemption". A failed query looks exactly like a quiet account, and
+    # the non-interactive leg is the one that matters for service accounts - it is the
+    # difference between an unused exemption and the only reason a nightly job still works.
     $events = @()
-    try { $events += Get-MgAuditLogSignIn -Filter $base -All -ErrorAction Stop } catch { Write-Warn "interactive query failed for $($t.UPN): $($_.Exception.Message)" }
-    try { $events += Get-MgAuditLogSignIn -Filter "$base and signInEventTypes/any(x: x eq 'nonInteractiveUser')" -All -ErrorAction Stop } catch {}
+    $queryFailed = $false
+    try { $events += Get-MgAuditLogSignIn -Filter $base -All -ErrorAction Stop }
+    catch { $queryFailed = $true; Write-Warn "interactive query failed for $($t.UPN): $($_.Exception.Message)" }
+    try { $events += Get-MgAuditLogSignIn -Filter "$base and signInEventTypes/any(x: x eq 'nonInteractiveUser')" -All -ErrorAction Stop }
+    catch { $queryFailed = $true; Write-Warn "non-interactive query failed for $($t.UPN): $($_.Exception.Message)" }
 
     if ($Detailed) {
         foreach ($e in $events) {
@@ -152,11 +159,17 @@ foreach ($t in $targets) {
     $last = ($events | Sort-Object CreatedDateTime -Descending | Select-Object -First 1).CreatedDateTime
 
     # ---- derive signal ----
+    # Order matters. "Non-interactive only" is tested BEFORE the app-count branches:
+    # a service account typically talks to one or two apps, so under the old order it was
+    # labelled "single app - scope the exemption" and the fact that no human ever signs in
+    # - the thing that actually tells you to move it to a certificate or a managed identity
+    # - was never reached.
     $signal = switch ($true) {
+        ($queryFailed) { "UNKNOWN - a sign-in query failed for this account; do not act on this row"; break }
         ($events.Count -eq 0) { "No sign-ins in $Days d - exemption likely unneeded"; break }
+        ($interactiveCount -eq 0) { "Non-interactive only - service auth; move to cert/managed identity"; break }
         ($apps.Count -eq 1) { "Single app ($($apps[0])) - scope exemption to this app"; break }
         ($apps.Count -le 3) { "Few apps ($($apps.Count)) - candidate to scope to named apps"; break }
-        ($interactiveCount -eq 0) { "Non-interactive only - service auth; move to cert/managed identity"; break }
         default { "Broad usage ($($apps.Count) apps) - review; exemption may be justified" }
     }
     $flags = @()
@@ -185,7 +198,9 @@ foreach ($t in $targets) {
 Write-Progress -Activity "Sign-in pull" -Completed
 
 # ---- sort: best removal/scoping candidates first --------------------------
-$order = @{ 'No' = 0; 'Single' = 1; 'Few' = 2; 'Non' = 3; 'Broad' = 4 }
+# UNKNOWN sorts to the top, not the bottom: those rows are the ones a reviewer must not
+# act on, so they belong where they will be seen rather than at the end of the table.
+$order = @{ 'UNKNOWN' = -1; 'No' = 0; 'Non' = 1; 'Single' = 2; 'Few' = 3; 'Broad' = 4 }
 $agg = $agg | Sort-Object `
 @{E = { $k = ($_.Signal -split ' ')[0]; if ($order.ContainsKey($k)) { $order[$k] }else { 5 } } }, `
 @{E = { $_.SignIns } }, UserPrincipalName
@@ -202,6 +217,10 @@ if ($Detailed) {
     $raw | Export-Csv -Path $det -NoTypeInformation -Encoding UTF8
     Write-OK "Per-sign-in detail -> $det"
 }
-Write-Warn ("{0} have NO activity in {1}d (drop the exemption)" -f @($agg | Where-Object { $_.SignIns -eq 0 }).Count, $Days)
+$unknown = @($agg | Where-Object { $_.Signal -like 'UNKNOWN*' })
+Write-Warn ("{0} have NO activity in {1}d (drop the exemption)" -f @($agg | Where-Object { $_.Signal -notlike 'UNKNOWN*' -and $_.SignIns -eq 0 }).Count, $Days)
 Write-Warn ("{0} use a single app (scope to that app)" -f @($agg | Where-Object { $_.AppCount -eq 1 }).Count)
+if ($unknown.Count -gt 0) {
+    Write-Warn ("{0} row(s) could not be queried and are NOT counted above. Zero sign-ins there means 'not measured', not 'unused' - re-run before acting on them." -f $unknown.Count)
+}
 $agg | Select-Object UserPrincipalName, SignIns, AppCount, IPCount, Signal | Format-Table -AutoSize

@@ -1,4 +1,5 @@
 #requires -Modules ExchangeOnlineManagement
+
 <#
 .SYNOPSIS
     Blocks a malicious domain in the Exchange Online Tenant Allow/Block List (TABL)

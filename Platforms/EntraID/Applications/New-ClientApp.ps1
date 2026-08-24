@@ -57,8 +57,15 @@ Write-Host "Owner resolved: $($Owner.DisplayName) [$($Owner.Id)]" -ForegroundCol
 # ---------------- Create ----------------
 $Results = foreach ($Name in $AppNames) {
 
-    # Idempotency guard
-    $Existing = Get-MgApplication -Filter "displayName eq '$Name'" -ErrorAction SilentlyContinue
+    # Idempotency guard. A failed lookup must not read as "it does not exist yet" - that
+    # turns a re-run into a duplicate app registration, which is the one thing this guard
+    # is here to prevent. If the question cannot be answered, skip the name.
+    try {
+        $Existing = Get-MgApplication -Filter "displayName eq '$($Name -replace "'","''")'" -ErrorAction Stop
+    } catch {
+        Write-Warning "$Name - could not check whether it already exists ($($_.Exception.Message)). Skipping rather than risk creating a duplicate."
+        continue
+    }
     if ($Existing) {
         Write-Warning "$Name already exists (AppId $($Existing.AppId)) - skipping."
         continue

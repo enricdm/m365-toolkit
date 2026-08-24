@@ -1,6 +1,9 @@
 <#
-    Edit-MailGroupMember.ps1 — Add/Remove members on EXISTING mail groups
-    ----------------------------------------------------------------------
+.SYNOPSIS
+    Adds and removes members on EXISTING mail groups, creating MailContacts for
+    external addresses that do not exist yet.
+
+.DESCRIPTION
     The groups already exist, so this script only manages membership
     (no group creation, no sender-restriction logic).
 

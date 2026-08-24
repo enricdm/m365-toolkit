@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+
 <#
 .SYNOPSIS
     List resource mailboxes (rooms / equipment) for a given ISO country, using a

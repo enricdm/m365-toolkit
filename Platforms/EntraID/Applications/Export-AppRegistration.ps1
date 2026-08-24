@@ -85,10 +85,19 @@ $allAppRoles = $allServicePrincipals | ForEach-Object { $_.AppRoles } | Where-Ob
 # Load directory roles to map principalId -> role name
 Write-Host "Loading directory role assignments..." -ForegroundColor Cyan
 $dirRoleAssignments = @{}
+# Flag_HasDirectoryRole is derived from this table, so a role whose members fail to load
+# makes privileged service principals look unprivileged. Count the failures and say so,
+# rather than letting the flag read "No" for a reason that has nothing to do with the app.
+$roleReadFailures = [System.Collections.Generic.List[string]]::new()
 try {
     $activeRoles = Get-MgDirectoryRole -All -ErrorAction Stop
     foreach ($role in $activeRoles) {
-        $members = Get-MgDirectoryRoleMember -DirectoryRoleId $role.Id -All -ErrorAction SilentlyContinue
+        try {
+            $members = Get-MgDirectoryRoleMember -DirectoryRoleId $role.Id -All -ErrorAction Stop
+        } catch {
+            $roleReadFailures.Add("$($role.DisplayName): $($_.Exception.Message)")
+            continue
+        }
         foreach ($m in $members) {
             if (-not $dirRoleAssignments.ContainsKey($m.Id)) {
                 $dirRoleAssignments[$m.Id] = @()
@@ -97,7 +106,11 @@ try {
         }
     }
 } catch {
-    Write-Warning "Could not load directory roles: $_"
+    Write-Warning "Could not load directory roles at all: $_. Flag_HasDirectoryRole will be False on every row for that reason, not because no app holds a role."
+}
+if ($roleReadFailures.Count -gt 0) {
+    Write-Warning "$($roleReadFailures.Count) directory role(s) could not be enumerated. Any service principal holding only those roles will show Flag_HasDirectoryRole = False incorrectly:"
+    $roleReadFailures | ForEach-Object { Write-Warning "    $_" }
 }
 
 #endregion

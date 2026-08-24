@@ -57,15 +57,31 @@ Connect-MgGraph @connectParams -NoWelcome
 #endregion
 
 #region Fetch policies and named locations
+# $top is a page size, not a limit: Graph is free to return fewer items and a nextLink,
+# and a request that ignores the nextLink then silently exports a partial policy set.
+# A CA export that is quietly missing policies is worse than no export, so follow it.
+function Get-GraphCollection {
+    param([Parameter(Mandatory)][string]$Uri)
+    $items = New-Object System.Collections.Generic.List[object]
+    $next = $Uri
+    $pages = 0
+    while ($next) {
+        $resp = Invoke-MgGraphRequest -Method GET -Uri $next -ErrorAction Stop
+        if ($resp.value) { $items.AddRange(@($resp.value)) }
+        $next = $resp.'@odata.nextLink'
+        $pages++
+    }
+    if ($pages -gt 1) { Write-Host "  -> $pages pages followed" -ForegroundColor DarkGray }
+    return $items
+}
+
 Write-Host "Fetching Conditional Access policies..." -ForegroundColor Cyan
-$policies = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies?$top=999' |
-    Select-Object -ExpandProperty value
+$policies = Get-GraphCollection -Uri 'https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies?$top=999'
 
 Write-Host "  -> $($policies.Count) policies found" -ForegroundColor Green
 
 Write-Host "Fetching named locations..." -ForegroundColor Cyan
-$namedLocations = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/identity/conditionalAccess/namedLocations?$top=999' |
-    Select-Object -ExpandProperty value
+$namedLocations = Get-GraphCollection -Uri 'https://graph.microsoft.com/v1.0/identity/conditionalAccess/namedLocations?$top=999'
 $locationMap = @{}
 foreach ($loc in $namedLocations) { $locationMap[$loc.id] = $loc.displayName }
 #endregion
