@@ -108,7 +108,7 @@ code Platforms/EntraID/README.md
 - `Verb-Noun.ps1`, PowerShell approved verbs — with one exception, `Detect-LocalAdminAccount.ps1`,
   which follows the Detect/Repair naming Intune Remediations expects
 - Every script documents itself in its header. Most use comment-based help, so
-  `Get-Help .\Script.ps1 -Full` works; seven older ones carry a banner comment block instead, which
+  `Get-Help .\Script.ps1 -Full` works; four older ones carry a banner comment block instead, which
   reads fine in an editor but returns nothing useful to `Get-Help`
 - Most scripts write timestamped output to `Exports/` next to the script, anchored to
   `$PSScriptRoot`, never overwriting. Seven default their output path to the **current directory**
