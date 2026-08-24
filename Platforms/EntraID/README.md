@@ -35,7 +35,7 @@ one does, this README points it out.
 | [`Update-AppContact.ps1`](Applications/Update-AppContact.ps1) | Resolves a responsible human per app through five ranked signals, with a confidence score, and writes them into the tracking workbook | No (writes a file) | interactive |
 | [`Update-FederatedCredential.ps1`](Applications/Update-FederatedCredential.ps1) | Replaces an app's GitHub OIDC credentials with one all-branches FFIC per repository | **Yes** (destructive) | interactive |
 | **ConditionalAccess** | | | |
-| [`Get-MfaExclusion.ps1`](ConditionalAccess/Get-MfaExclusion.ps1) | Every user excluded from MFA-enforcing CA policies, with nested groups expanded | No | app-only + cert, or interactive |
+| [`Get-MfaExemption.ps1`](ConditionalAccess/Get-MfaExemption.ps1) | Users genuinely exempt from MFA — exception-group members and direct exclusions, nested groups expanded. `-AllExclusions` for the full dump | No | app-only + cert, or interactive |
 | [`Get-ExemptionSignInActivity.ps1`](ConditionalAccess/Get-ExemptionSignInActivity.ps1) | Adds 30-day sign-in telemetry to those exemptions and says which can be dropped or narrowed | No | app-only + cert, or interactive |
 | [`Export-ConditionalAccessPolicy.ps1`](ConditionalAccess/Export-ConditionalAccessPolicy.ps1) | Exports all CA policies with every GUID resolved to a display name | No | interactive |
 | [`Export-VpnSignInLog.ps1`](ConditionalAccess/Export-VpnSignInLog.ps1) | Sign-ins for a VPN application plus Identity Protection risk detections and risky users | No | app-only + cert, or interactive |
@@ -267,9 +267,25 @@ exempt people is larger than anyone believes. Asking "how many users are exclude
 from MFA?" and reading the count of direct members off the CA policy blade gives an
 answer that is always too low.
 
-`Get-MfaExclusion.ps1` answers the first question properly: it expands excluded
-groups transitively, including groups nested inside them, so the count is the real
-population and not just the names that happen to be listed on the policy.
+`Get-MfaExemption.ps1` answers the first question properly, and it took two goes to
+get there. It expands excluded groups transitively, including groups nested inside
+them, so the count is the real population and not just the names that happen to be
+listed on the policy.
+
+The second correction is the one worth reading, because the script was wrong in the
+direction that does not look wrong. It used to report every exclusion it found, and
+an exclusion is not an exemption: the largest exclusion lists in this tenant belong
+to policies whose grant control is **block**, and excluding somebody from a policy
+that blocks is the opposite of exempting them from MFA. The run that prompted the fix
+produced **17,682 rows where the real answer was 192** — a factor of 92 — and the
+report was filtered by hand before anyone used it. A number that has to be corrected
+by hand before use is not a report, and the number this produces is the one somebody
+quotes to security.
+
+So the narrowing is now the default and the script is named for the question rather
+than the mechanism. `-AllExclusions` still gives the full dump; that is a legitimate
+question — *where does this user appear in any exclusion list* — but it is a
+different one, and it says so.
 
 `Get-ExemptionSignInActivity.ps1` exists because that list, on its own, cannot be
 acted on. Knowing 400 people are exempt tells you nothing about which exemptions to
@@ -286,16 +302,16 @@ first produces. The first says *who* is exempt, the second says *whether the
 exemption is still deserved*.
 
 ```powershell
-# 1. Who is excluded from MFA today? Scope it to the baseline policy, or the
-#    number will include app-scoped exclusions and be meaninglessly large.
-.\ConditionalAccess\Get-MfaExclusion.ps1 -TenantId '<tenant-id>' `
+# 1. Who is exempt from MFA today? Scope it to the baseline policy; without that the
+#    input set includes app-scoped policies too.
+.\ConditionalAccess\Get-MfaExemption.ps1 -TenantId '<tenant-id>' `
     -PolicyName '*Require MFA*' -MasterExceptionGroup 'CA-Exception-MFA'
-#    -> Exports\CA-MFA-Exclusions_<stamp>.csv
-#    -> Exports\CA-MFA-ExclusionSources_<stamp>.csv   (which group inflates the count)
+#    -> Exports\CA-MFA-Exemptions_<stamp>.csv
+#    -> Exports\CA-MFA-ExemptionSources_<stamp>.csv   (per-group breakdown)
 
 # 2. Feed that CSV back in to see 30 days of sign-in behaviour per exempt user.
 .\ConditionalAccess\Get-ExemptionSignInActivity.ps1 -TenantId '<tenant-id>' `
-    -InputCsv .\ConditionalAccess\Exports\CA-MFA-Exclusions_<stamp>.csv -Detailed
+    -InputCsv .\ConditionalAccess\Exports\CA-MFA-Exemptions_<stamp>.csv -Detailed
 #    -> Exports\Exemption-SignInActivity_<stamp>.csv
 ```
 
@@ -773,12 +789,21 @@ Windows Hello for Business all evaluate against.
 
 Stated plainly, because pretending otherwise would be worse:
 
-- **`Get-MfaExclusion.ps1` over-counts by default.** With no `-PolicyName` /
-  `-PolicyId` it evaluates every enabled MFA-enforcing policy, so being excluded
-  from one app-scoped policy counts as an exclusion. It warns when more than five
-  policies are in scope and writes a per-group breakdown, but the headline number is
-  only meaningful once you scope it to the baseline policy.
-- **`Get-MfaExclusion.ps1` does not expand excluded directory roles.** Only users
+- **`Get-MfaExemption.ps1` still evaluates every enabled MFA-enforcing policy unless
+  you scope it.** The exemption criterion now filters the output, so the 92x
+  over-count described above is gone, but the *input* set is still every policy
+  without `-PolicyName` / `-PolicyId`. It warns when more than five are in scope and
+  writes a per-group breakdown. Scope it to the baseline policy when the number is
+  going to be quoted.
+- **The reason those block-policy rows were ever selected is not established.** The
+  policy filter requires `builtInControls` to contain `mfa`, or an
+  `authenticationStrength`, and the policies contributing the bulk of the inflated
+  count had neither in the exports available. The narrowing fixes the output either
+  way, because it filters on what an exemption *is* rather than on how the policy was
+  selected — but if you are relying on this in anger, run it once against your own
+  tenant and check the per-policy diagnostics rather than trusting that the input set
+  is what you expect.
+- **`Get-MfaExemption.ps1` does not expand excluded directory roles.** Only users
   and groups are expanded; a policy that excludes a role prints a warning and its
   role members are not counted.
 - **`New-AdminAccount.ps1` has no `-WhatIf`.** It creates a privileged account after

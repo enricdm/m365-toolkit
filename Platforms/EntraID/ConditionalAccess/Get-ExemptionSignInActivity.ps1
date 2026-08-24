@@ -33,8 +33,8 @@
 
 .EXAMPLE
     .\Get-ExemptionSignInActivity.ps1 -TenantId '<tenant-id>' `
-        -InputCsv .\Exports\CA-MFA-Exclusions_20260101-120000.csv
-    Chained run: consumes the CSV produced by Get-MfaExclusion.ps1.
+        -InputCsv .\Exports\CA-MFA-Exemptions_20260101-120000.csv
+    Chained run: consumes the CSV produced by Get-MfaExemption.ps1.
 
 .EXAMPLE
     .\Get-ExemptionSignInActivity.ps1 -TenantId '<tenant-id>' `
@@ -92,6 +92,11 @@ if ($InputCsv -and (Test-Path $InputCsv)) {
     # group + direct user exclusions). Groups that *enforce* MFA on their members are
     # typically excluded from BLOCK policies too, which does not make them exempt —
     # counting those rows inflates the exemption total. Use -AllRows to keep them.
+    #
+    # As of the Get-MfaExemption rename this criterion also lives upstream, where it is
+    # the default. On a CSV from a default upstream run this filter is a no-op. Keep it:
+    # it is what makes the script correct when fed a -AllExclusions dump, or a CSV from
+    # an older copy. Redundant here is not the same as dead.
     if (-not $AllRows -and ($rows | Get-Member -Name ExcludedVia)) {
         $before = $rows.Count
         $rows = $rows | Where-Object { $_.ExcludedVia -match $ExceptionGroup -or $_.ExcludedVia -match 'Direct user exclusion' }

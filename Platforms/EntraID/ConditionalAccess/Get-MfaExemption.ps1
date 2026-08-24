@@ -1,22 +1,36 @@
 <#
 .SYNOPSIS
-    Enumerates every user excluded from MFA enforcement across Conditional Access
-    policies, expanding excluded GROUPS to their full transitive membership
-    (direct members + nested-group members).
+    Reports the users who are genuinely exempt from MFA, expanding exception groups
+    to their full transitive membership (direct members + nested-group members).
 
 .DESCRIPTION
-    A user is treated as excluded from MFA when, on any in-scope MFA-enforcing CA
-    policy, they are:
-      (a) directly listed in ExcludeUsers, OR
-      (b) a member of a group in ExcludeGroups, OR
-      (c) a member of a group nested inside such a group (transitive).
+    Answers "who is actually exempt from MFA?" - not "who appears in an exclusion
+    list somewhere?", which is a much larger and much less useful set.
+
+    A user is counted as EXEMPT when they are a member of the master exception
+    group (transitively, including nested groups), or are directly listed in
+    ExcludeUsers on an MFA-enforcing policy.
+
+    WHY THE DEFAULT NARROWS. Being excluded from a Conditional Access policy is not
+    the same as being exempt from MFA. The largest exclusion lists in a real tenant
+    belong to policies whose grant control is BLOCK, and excluding somebody from a
+    policy that blocks is the opposite of exempting them from MFA. An earlier
+    version of this script reported every exclusion it found: on the tenant it was
+    written against that produced 17,682 rows where the real answer was 192, a
+    factor of 92, and the delivered report had to be filtered by hand afterwards.
+    The number this script prints is the number somebody quotes to security, so it
+    defaults to the one that means what its name says.
+
+    Use -AllExclusions for the full exclusion dump. That is a legitimate question -
+    "where does this user appear in any exclusion list" - but it is a different one,
+    and it is labelled as such rather than being the default.
 
     SCOPING NOTE: by default ALL enabled MFA-enforcing policies are evaluated. In a
-    tenant with many app/country-scoped policies this over-counts - being excluded
-    from e.g. a Salesforce-only MFA policy does not mean a user is exempt from the
-    org-wide MFA requirement. Use -PolicyName / -PolicyId to scope to the baseline
-    policy when the goal is to measure true MFA exemptions. The per-group and
-    per-policy diagnostics printed during the run show which groups inflate the count.
+    tenant with many app/country-scoped policies this widens the input set - being
+    excluded from e.g. a Salesforce-only MFA policy does not mean a user is exempt
+    from the org-wide MFA requirement. Use -PolicyName / -PolicyId to scope to the
+    baseline policy. The per-group and per-policy diagnostics printed during the run
+    show which groups contribute what.
 
     READ-ONLY. No directory writes.
 
@@ -39,6 +53,11 @@
     Display name of the master exception group always expanded transitively.
     Rename to match your own tenant's exception group.
 
+.PARAMETER AllExclusions
+    Report every exclusion found, not only true exemptions. Includes exclusions from
+    policies that BLOCK, which are not MFA exemptions. Use when the question is
+    "where does this user appear in any exclusion list", not "who is exempt".
+
 .PARAMETER IncludeReportOnly
     Also evaluate policies in 'enabledForReportingButNotEnforced' state.
 
@@ -47,18 +66,18 @@
     users not present are flagged InReport = No (the set the report is missing).
 
 .EXAMPLE
-    .\Get-MfaExclusion.ps1 -TenantId '<tenant-id>'
-    All enabled MFA-enforcing policies. Over-counts in a tenant with many scoped
-    policies — read the diagnostics table before quoting the total.
+    .\Get-MfaExemption.ps1 -TenantId '<tenant-id>'
+    True exemptions only, across all enabled MFA-enforcing policies.
+    The run reports how many further exclusion rows were not counted, and why.
 
 .EXAMPLE
-    .\Get-MfaExclusion.ps1 -TenantId '<tenant-id>' -PolicyName '*Require MFA*' `
+    .\Get-MfaExemption.ps1 -TenantId '<tenant-id>' -PolicyName '*Require MFA*' `
         -MasterExceptionGroup 'CA-Exception-MFA'
-    Scoped to the baseline policy — this is the number that means "exempt from MFA".
+    Scoped to the baseline policy. This is the number to quote to security.
 
 .NOTES
     When to use  : Security asks how many people are exempt from MFA and the number the portal shows does not match reality.
-    Why it exists: Excluded groups are expanded transitively, including nested groups, which is exactly what the policy view hides. The per-group diagnostics show which group is inflating the count, and the run warns that evaluating every MFA policy over-counts.
+    Why it exists: Two things the portal hides. Excluded groups are expanded transitively, including nested groups, so the count is the real population and not the names listed on the policy. And exclusion is separated from exemption: an exclusion from a BLOCK policy is not an MFA exemption, and counting it as one overstated a real tenant by 92x.
     Graph permissions: Policy.Read.All, Group.Read.All, GroupMember.Read.All,
                        User.Read.All, AuditLog.Read.All, Directory.Read.All
     Modules: Microsoft.Graph.Authentication, .Identity.SignIns, .Groups, .Users, .Reports
@@ -74,6 +93,7 @@ param(
     [string[]]$PolicyId,
     [string]$MasterExceptionGroup = 'CA-Exception-MFA',
     [switch]$IncludeReportOnly,
+    [switch]$AllExclusions,
     [string]$CompareCsv,
     [string]$ExportDir = (Join-Path $PSScriptRoot 'Exports')
 )
@@ -226,6 +246,31 @@ $rows = foreach ($uid in $excluded.Keys) {
         ObjectId          = $uid
     }
 }
+# ---- narrow to true exemptions -------------------------------------------
+# Being excluded from a policy is not the same as being exempt from MFA. The
+# largest exclusion lists in a real tenant belong to policies whose grant control
+# is BLOCK - excluding someone from a policy that blocks is the opposite of
+# exempting them from MFA. Reporting those as "MFA exemptions" overstates the
+# number enormously; on the tenant this was written against, by 92x.
+#
+# A true exemption is membership of the master exception group, or a direct user
+# exclusion on an MFA-enforcing policy. Everything else is reported only with
+# -AllExclusions, which is a different question and is labelled as one.
+$allRows = $rows
+if (-not $AllExclusions) {
+    $rows = @($rows | Where-Object {
+            $_.ExcludedVia -match [regex]::Escape($MasterExceptionGroup) -or
+            $_.ExcludedVia -match 'Direct user exclusion'
+        })
+    $dropped = $allRows.Count - $rows.Count
+    if ($dropped -gt 0) {
+        Write-OK ("{0} exemptions. {1} further exclusion rows were NOT counted - they are exclusions from other policies, including block policies, which are not MFA exemptions. Use -AllExclusions to see them." -f $rows.Count, $dropped)
+    }
+    if ($rows.Count -eq 0 -and $allRows.Count -gt 0) {
+        Write-Warn "No row matched the exemption criteria, but $($allRows.Count) exclusion rows exist. Check -MasterExceptionGroup names your real exception group, or use -AllExclusions."
+    }
+}
+
 $rows = $rows | Sort-Object `
 @{E = { if ($_.AccountEnabled -eq $true) { 0 }else { 1 } } }, `
 @{E = { if ($_.MfaRegistered -eq $false) { 0 }elseif ($_.MfaRegistered -eq 'unknown') { 1 }else { 2 } } }, `
@@ -234,10 +279,10 @@ $rows = $rows | Sort-Object `
 # ---- export + diagnostics -------------------------------------------------
 if (-not (Test-Path $ExportDir)) { New-Item -ItemType Directory -Path $ExportDir | Out-Null }
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$csv = Join-Path $ExportDir "CA-MFA-Exclusions_$stamp.csv"
+$csv = Join-Path $ExportDir "CA-MFA-Exemptions_$stamp.csv"
 $rows | Export-Csv -Path $csv -NoTypeInformation -Encoding UTF8
 
-$diag = Join-Path $ExportDir "CA-MFA-ExclusionSources_$stamp.csv"
+$diag = Join-Path $ExportDir "CA-MFA-ExemptionSources_$stamp.csv"
 $groupStats | Sort-Object Users -Descending | Export-Csv -Path $diag -NoTypeInformation -Encoding UTF8
 
 Write-Step "Done"
