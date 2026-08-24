@@ -19,7 +19,7 @@ of it — at [enricdiaz.com/projects](https://enricdiaz.com/projects).
 | Platform | Scripts | What it covers |
 |---|---:|---|
 | [**Entra ID**](Platforms/EntraID/) | 16 | App registrations, federated credentials, Conditional Access, MFA exclusions, usage location, licence reclamation, device object cleanup |
-| [**Endpoint**](Platforms/Endpoint/) | 12 | Intune assignments and group membership, device and configuration exports, primary user and category maintenance, stale-device cleanup, device-side remediation pairs, out-of-support Windows |
+| [**Endpoint**](Platforms/Endpoint/) | 10 | Intune assignments and group membership, device and configuration exports, primary user and category maintenance, stale-device cleanup, out-of-support Windows, desktop Visio/Project usage |
 | [**Exchange Online**](Platforms/Exchange/) | 11 | Mail groups, shared mailboxes and calendars, forwarding, mail-flow protection and verification, resource rooms |
 | [**SharePoint Online**](Platforms/SharePoint/) | 7 | Site permissions, storage quotas and notifications, OneDrive recovery |
 | [**Active Directory**](Platforms/ActiveDirectory/) | 2 | proxyAddresses repair for hybrid identity, SMBv1 network probe |
@@ -64,10 +64,10 @@ had that flaw were fixed; the pattern is documented where it matters.
 
 ## Requirements
 
-- **PowerShell 7.2+** (a few scripts declare `#Requires -Version 7.0`) — with one deliberate
-  exception: everything under `Platforms/Endpoint/Remediations/` runs **on the managed device**, as
-  SYSTEM, under **Windows PowerShell 5.1**, because that is what Intune Remediations executes. Those
-  scripts use no modules and make no network calls.
+- **PowerShell 7.2+** (a few scripts declare `#Requires -Version 7.0`) — with two exceptions:
+  `Get-VisioProjectDesktopUsage.ps1` runs on the managed device under Windows PowerShell 5.1, and
+  `Remove-SensitivityLabel.ps1` requires it, because the `PurviewInformationProtection` module is
+  Windows PowerShell only.
 - Modules, per platform: `Microsoft.Graph`, `ExchangeOnlineManagement`, `PnP.PowerShell`,
   `ActiveDirectory` (RSAT), `Microsoft.PowerApps.Administration.PowerShell`, `ImportExcel`
 - Permissions vary per script and are documented in each README — most are read-only Graph
@@ -105,8 +105,7 @@ code Platforms/EntraID/README.md
 
 ## Conventions
 
-- `Verb-Noun.ps1`, PowerShell approved verbs — with one exception, `Detect-LocalAdminAccount.ps1`,
-  which follows the Detect/Repair naming Intune Remediations expects
+- `Verb-Noun.ps1`, PowerShell approved verbs throughout
 - Every script documents itself in its header. Most use comment-based help, so
   `Get-Help .\Script.ps1 -Full` works; four older ones carry a banner comment block instead, which
   reads fine in an editor but returns nothing useful to `Get-Help`

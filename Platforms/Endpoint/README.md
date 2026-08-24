@@ -1,10 +1,10 @@
 # Endpoint
 
-Intune device management: reporting, bulk maintenance, configuration snapshots and device-side
-detection/remediation pairs — plus two standalone endpoint reports.
+Intune device management: reporting, bulk maintenance and configuration snapshots — plus two
+standalone endpoint reports.
 
-Everything under `Intune/` talks to Microsoft Graph from an admin workstation. Everything under
-`Remediations/` runs **on the device**, as SYSTEM, deployed through Intune Remediations.
+Everything under `Intune/` talks to Microsoft Graph from an admin workstation.
+`Get-VisioProjectDesktopUsage.ps1` runs on the device itself.
 
 ## Index
 
@@ -28,14 +28,23 @@ Everything under `Intune/` talks to Microsoft Graph from an admin workstation. E
 | [`Intune/Set-IntuneDeviceCategory.ps1`](Intune/Set-IntuneDeviceCategory.ps1) | Assigns device categories from a mapping, by subnet or device name | **Yes** — `-Execute` | delegated Graph |
 | [`Intune/Invoke-IntuneStaleDeviceCleanup.ps1`](Intune/Invoke-IntuneStaleDeviceCleanup.ps1) | Finds devices that stopped checking in and retires or deletes them | **Yes, destructive** — `-Execute` | delegated Graph |
 
-### Remediations — run on the device
+### Not here: the local administrator remediation pair
 
-Detection and repair are separate scripts, as Intune Remediations expects. Detection exits `0` for
-compliant and `1` for "remediate"; nothing else.
+There used to be an Intune Remediations detection/repair pair here that created a named local
+administrator account with a random per-device password, on the understanding that Windows LAPS
+would then take ownership of it and rotate it.
 
-| Pair | What it checks and fixes | Changes state | Auth |
-|---|---|:---:|---|
-| [`Remediations/LocalAdmin/`](Remediations/LocalAdmin/) | A named local administrator account exists, is enabled, and is in the Administrators group | **Yes** — repair half | none — SYSTEM |
+That is no longer worth shipping. **Windows LAPS is the answer to this problem**, and current
+versions manage the account itself — creation included — rather than only its password. A script
+that creates the account so LAPS can adopt it solves a problem LAPS no longer has, and publishing
+one invites somebody to deploy it instead of configuring LAPS properly. Use Windows LAPS.
+
+The reasoning is kept because the failure it was built against is still worth knowing: the scripts
+it replaced each carried the same plaintext local-admin password in source, deployed to every
+device in the fleet. A shared static local administrator password is a lateral-movement primitive —
+recover it from one device and you have administrative access to every device that shares it, and
+it cannot be rotated without editing and redeploying. If you are looking at scripts that do that,
+treat the password as compromised and move to LAPS.
 
 ## Requirements
 
@@ -54,16 +63,6 @@ compliant and `1` for "remediate"; nothing else.
 
 - Windows PowerShell 5.1 or PowerShell 7, 64-bit
 - No modules and no credentials. Must run **as the signed-in user** — it reads that user's `HKCU`.
-
-**`Remediations/`**
-
-- Windows PowerShell 5.1, 64-bit, running as SYSTEM
-- No modules, no credentials, no network calls
-- Deploy through **Devices → Remediations**. Set *Run in 64-bit PowerShell* = **Yes**.
-  Leave *Run using logged-on credentials* = **No** — these need SYSTEM.
-
-> Intune Remediations passes **no arguments**. The parameters exist so the scripts can be tested and
-> reviewed; before deploying, edit the defaults in the `param()` block to match your environment.
 
 ## Usage
 
@@ -277,36 +276,6 @@ record only and does not touch the device — if it ever checks in again it may 
 > the device is gone.** Confirm against your CMDB before acting on anything you cannot re-enrol.
 > Devices with no usable timestamp at all are reported and never acted on.
 
-### `Remediations/LocalAdmin/`
-
-Detection checks that the account exists, is enabled, and is in the local Administrators group —
-resolved by well-known SID `S-1-5-32-544`, so it works on non-English Windows. Repair creates or
-fixes it.
-
-> **No password is embedded, and that is the entire point.**
->
-> The scripts this replaces each carried the same plaintext local-admin password in source, deployed
-> to every device in the fleet. A shared static local administrator password is a lateral-movement
-> primitive: recover it from one device and you have administrative access to every device that
-> shares it. It also cannot be rotated without editing and redeploying.
->
-> Instead the repair script generates a random password per device with a cryptographic RNG, never
-> writes it to disk and never returns it. That password is therefore unknown to everyone — including
-> you — which is only useful if something else manages it. **Deploy Windows LAPS against this
-> account** (Endpoint security → Account protection → Local admin password solution), setting
-> `AdministratorAccountName` to the same value.
->
-> **Without LAPS this creates an account nobody can log in to.** That is a deliberate trade-off: an
-> unusable break-glass account is a smaller problem than a fleet-wide shared one. Set up LAPS first.
-
-`-RequirePasswordNeverExpires` is **off** by default: if LAPS manages the account, LAPS owns expiry,
-and pinning it here fights that.
-
-> **A fixed defect worth naming.** The detection script this replaces used `return 1` rather than
-> `exit 1` on the account-missing branch. `return` does not set the process exit code, so a device
-> **missing** the account exited `0` — reported compliant, never remediated. The check inverted its
-> result in precisely the case it existed for.
-
 ### `Get-OutOfSupportDevice.ps1`
 
 Windows 10 and 11 ship as versions, and each version has its own end-of-servicing date. Past that
@@ -394,7 +363,7 @@ Pre-remediation detection output column, or via Graph `deviceHealthScripts` run 
 
 ## Known rough edges
 
-- **The `Intune/` and `Remediations/` scripts have not been run against a live tenant from this
+- **The `Intune/` scripts have not been run against a live tenant from this
   repo.** They are verified statically — all parse, parameter sets bind, comment-based help
   renders, and PSScriptAnalyzer reports nothing beyond `PSAvoidUsingWriteHost`, which these
   scripts trigger deliberately: they are interactive tools whose progress output is the point.
