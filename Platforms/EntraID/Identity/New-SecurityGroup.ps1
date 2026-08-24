@@ -39,6 +39,8 @@
     Creates the groups and adds the members.
 
 .NOTES
+    When to use  : A new project or workspace needs several groups with their members created in one go.
+    Why it exists: Data-driven from a .psd1 and idempotent: an existing group is reused, members already in it are skipped, and a UPN that does not resolve is reported rather than fatal. Preview is the default and writes need -Execute.
     Requires: Microsoft.Graph (Groups + Users sub-modules).
     Scopes  : Group.ReadWrite.All, User.Read.All, GroupMember.ReadWrite.All
     WRITES TO THE DIRECTORY when -Execute is passed (creates groups, adds members).

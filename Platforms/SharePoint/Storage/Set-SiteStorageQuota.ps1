@@ -39,6 +39,8 @@
         -QuotaMB 102400
 
 .NOTES
+    When to use  : A site hits its ceiling and has to be raised, leaving a written record of what the previous value was.
+    Why it exists: Writes a rollback CSV of every target site's current quota before changing anything, supports -WhatIf, and records an unreadable site as unknown rather than 0. It also states the precondition: raising quota consumes tenant-pooled storage and needs whatever approval your policy requires.
     Module : Microsoft.Online.SharePoint.PowerShell
     Rights : SharePoint Administrator
 #>

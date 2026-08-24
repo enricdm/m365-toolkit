@@ -38,6 +38,8 @@
     .\Get-MissingLocationReport.ps1 -CsvPath ".\proofpoint_export.csv"
 
 .NOTES
+    When to use  : Proofpoint (or anything else fed from Entra) has users with no Location and you need to know which are a real problem and which are noise.
+    Why it exists: Eight actionable categories with a recommended action each, not a list of UPNs: sync lag, shared mailbox, guest, disabled, and 'licensed with no usageLocation, fix now' are different problems. Mailbox type comes from Graph mailboxSettings.userPurpose so Exchange Online is not needed, and Unknown stays distinct from 'not a user mailbox'.
     READ-ONLY. The bulk remediation block at the end of the file is commented out
     and has to be run deliberately.
 

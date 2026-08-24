@@ -21,6 +21,8 @@
     .\Export-ConditionalAccessPolicy.ps1 -TenantId '<tenant-id>' -OutputFolder .\Exports
 
 .NOTES
+    When to use  : An auditor asks for the Conditional Access policies in writing, or after an incident you need to diff today's CA against three months ago.
+    Why it exists: A GUID in a CA policy can be a user, group, role, service principal, appId or named location and the policy body does not say which. The resolver tries five endpoints, then role templates (CA stores role TEMPLATE ids), then servicePrincipals(appId=). Raw JSON, resolved JSON and a flat CSV for diffing are all kept.
     Required Graph scopes (read-only):
       Policy.Read.All, Directory.Read.All, Application.Read.All
     READ-ONLY. No directory writes.

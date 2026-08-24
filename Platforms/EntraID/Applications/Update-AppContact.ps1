@@ -58,6 +58,8 @@
     Real run with all signals. Writes <input>_enriched.xlsx alongside the source.
 
 .NOTES
+    When to use  : The app inventory has 200 rows with no owner and someone has to be called before anything is touched.
+    Why it exists: Resolves a responsible human through five ranked signals with a confidence score, resolves admin accounts back to the person's real mailbox through Graph, and outputs the ones it could not resolve as a separate manual-review list. That is a decision, not a data dump.
     Requires: ImportExcel, Microsoft.Graph.Authentication, Microsoft.Graph.Users
     Permissions: Directory.Read.All (Global Reader role is sufficient)
     Connect to the tenant that holds the app registrations. Admin accounts that

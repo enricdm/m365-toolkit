@@ -60,6 +60,8 @@
   .\Test-SmbV1.ps1 -ComputerName DC01,DC02,FS01 -TimeoutMs 10000
 
 .NOTES
+    When to use  : A vulnerability scan flags SMBv1 on domain controllers or file servers and you have to prove host by host whether it is genuinely enabled.
+    Why it exists: Four outcomes instead of two. A post-negotiate RST counts as DISABLED (it is the normal behaviour of a host with the SMB1 server driver stopped) and a filtered port counts as nothing at all - reporting a firewalled host as 'disabled' would turn a blocked scan into a false all-clear.
   Run as a FILE. If 445 is filtered you get NO_TCP, which is not a verdict.
   Alternative if nmap is available: nmap -p445 --script smb-protocols <host>
 #>

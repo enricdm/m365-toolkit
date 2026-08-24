@@ -57,6 +57,8 @@
     Scoped to the baseline policy — this is the number that means "exempt from MFA".
 
 .NOTES
+    When to use  : Security asks how many people are exempt from MFA and the number the portal shows does not match reality.
+    Why it exists: Excluded groups are expanded transitively, including nested groups, which is exactly what the policy view hides. The per-group diagnostics show which group is inflating the count, and the run warns that evaluating every MFA policy over-counts.
     Graph permissions: Policy.Read.All, Group.Read.All, GroupMember.Read.All,
                        User.Read.All, AuditLog.Read.All, Directory.Read.All
     Modules: Microsoft.Graph.Authentication, .Identity.SignIns, .Groups, .Users, .Reports

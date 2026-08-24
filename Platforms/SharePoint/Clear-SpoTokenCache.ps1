@@ -25,6 +25,8 @@
     .\Clear-SpoTokenCache.ps1 -AdminUrl 'https://contoso-admin.sharepoint.com' -SkipConnect
 
 .NOTES
+    When to use  : You have spent twenty minutes fighting an access-denied that should not happen, with the wrong account.
+    Why it exists: Connect-SPOService keeps reusing a cached token for the wrong account and no amount of Disconnect-SPOService clears it, because the token lives in the local identity caches rather than in the module. It also states the part people miss: open a fresh console first, because a session that has already loaded the identity assemblies can rewrite the caches on exit.
     Module : Microsoft.Online.SharePoint.PowerShell
     Affects the CURRENT USER's token caches only. Other Microsoft 365 tools on the
     machine will prompt for sign-in again after this runs.

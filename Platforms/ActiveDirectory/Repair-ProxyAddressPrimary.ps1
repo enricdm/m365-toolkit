@@ -48,6 +48,8 @@
         -SearchBase 'OU=Users,DC=corp,DC=local' -Execute
 
 .NOTES
+    When to use  : Entra Connect starts throwing 'no primary SMTP' sync errors, or a user reports their replies going out from an odd address, and you need to see how many other objects are in the same state.
+    Why it exists: Detects the primary address case-sensitively (only 'SMTP:' counts), classifies five separate faults, and automatically repairs only one of them: zero primaries plus exactly one misspelled prefix. Everything else is reported for a human, because guessing which of two primaries wins silently changes someone's reply-to address.
     Requires : ActiveDirectory module (RSAT)
     Rights   : write access to proxyAddresses and mail on the target user objects
     After    : run a delta sync on AAD Connect and verify in Exchange Online

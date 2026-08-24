@@ -7,6 +7,12 @@
 #     This sentinel value must be filtered out explicitly
 # ═══════════════════════════════════════════════════════════════════════════
 
+<#
+.NOTES
+    When to use  : Before the first SAML certificate of the year expires: which ones expire when, and who Entra will actually warn (by default whoever created the app, who has often left).
+    Why it exists: Graph returns 0001-01-01T00:00:00Z instead of null for apps with no SAML certificate; without filtering that sentinel every service principal in the tenant becomes a SAML app that expired two thousand years ago. It also warns when it finds zero instead of writing an empty CSV.
+#>
+
 param(
     [string]$OutputPath = ".\SAML_Notification_Emails_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
 )

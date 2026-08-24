@@ -18,6 +18,10 @@
         Connect-ExchangeOnline
         (M365 Group only: Connect-MgGraph -Scopes "Group.ReadWrite.All")
 
+
+.NOTES
+    When to use  : Creating a mail group that has external members - the case where the portal falls short.
+    Why it exists: One script for the three group types, auto-creating MailContacts for non-tenant addresses and applying sender restrictions. Dry run by default; nothing is written without -Execute.
 #>
 
 param(

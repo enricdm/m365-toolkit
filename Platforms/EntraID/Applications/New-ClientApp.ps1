@@ -29,6 +29,8 @@
     .\New-ClientApp.ps1 -Name 'APP-Client-01','APP-Client-02' -OwnerUpn 'admin@contoso.com'
 
 .NOTES
+    When to use  : A supplier asks for five or more app registrations in one batch. For one or two the portal is faster.
+    Why it exists: New-MgApplication does not create the service principal (the portal does), and without an SP you cannot assign app roles later. This creates both, sets the owner on each, stamps governance metadata and skips names that already exist, so it is safe to re-run.
     Requires Microsoft.Graph.Applications + Microsoft.Graph.Users.
     Scopes: Application.ReadWrite.All, User.Read.All
 #>

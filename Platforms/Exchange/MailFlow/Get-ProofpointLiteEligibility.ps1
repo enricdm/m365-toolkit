@@ -31,6 +31,12 @@
 # this and tells you where to turn it off.
 # ==============================================================================
 
+<#
+.NOTES
+    When to use  : You have to decide how many per-mailbox licences to buy and the number will be checked by someone who wants to reconcile it against the portal.
+    Why it exists: Uses the Graph Email Activity User Detail report rather than one message trace per mailbox: one call, server-side aggregation by Microsoft, so the figures match the admin centre exactly and reach 180 days instead of ten. It detects concealed report names and recommends re-running at D90 and D180 before committing to a licence count.
+#>
+
 [CmdletBinding()]
 param (
     [ValidateSet('D7','D30','D90','D180')]

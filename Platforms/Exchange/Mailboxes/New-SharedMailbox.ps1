@@ -17,6 +17,12 @@
 #        Connect-ExchangeOnline
 #
 
+<#
+.NOTES
+    When to use  : Creating a shared mailbox that more than three or four people need access to.
+    Why it exists: Creates the mailbox and grants FullAccess and SendAs to every member of a CSV in one pass, skipping external addresses with a clear warning because they cannot be granted mailbox access. Dry run by default.
+#>
+
 param(
     [Parameter(Mandatory)][string]$MailboxName,        # Name / sAMAccountName-style identifier
     [string]$DisplayName,                              # defaults to -MailboxName

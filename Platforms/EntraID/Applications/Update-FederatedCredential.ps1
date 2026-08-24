@@ -40,6 +40,8 @@
         -GitHubOrg 'contoso' -Repository 'platform-infra','platform-shared'
 
 .NOTES
+    When to use  : A GitHub Actions pipeline fails with 'no matching federated identity record' on a new branch and the app registration is already full of federated credentials.
+    Why it exists: Subject-mode credentials pin an exact sub claim, so a repo needs one per branch and the 20-credential ceiling arrives fast. FFIC uses a claims-matching expression instead, so one credential covers every branch of a repository.
     Scopes: Application.ReadWrite.All
     DESTRUCTIVE: deletes every existing federated credential on the target app.
 #>

@@ -42,6 +42,10 @@
 .EXAMPLE
     .\Export-CountryUserReport.ps1 -FilterValue 'ES' -SpHostName 'contoso.sharepoint.com' `
         -SpSitePath '/sites/Example' -Execute
+
+.NOTES
+    When to use  : The monthly report for each country's IT team: who holds which licence and which groups they are in.
+    Why it exists: Three normalised sheets (one row per user-group and user-SKU pair) delivered to SharePoint on a schedule under a managed identity. The xlsx output also removes the UTF-8 mojibake problem that the earlier CSV version had, with no encoding configuration.
 #>
 
 param(

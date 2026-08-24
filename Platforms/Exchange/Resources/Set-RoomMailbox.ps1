@@ -48,6 +48,10 @@
 .EXAMPLE
     # 4) Also create the mailbox cloud-native in the same run
     .\Set-RoomMailbox.ps1 -RoomName 'Room 1.01' -CreateInCloud -Execute
+
+.NOTES
+    When to use  : Provisioning or reconfiguring a room, and especially when someone reports that 'I made the reception group an editor of the room calendar and it does not work for them'.
+    Why it exists: Separates restricting who may BOOK the room (BookInPolicy, which accepts groups and evaluates membership at request time, so it survives staff changes) from granting Editor on the calendar folder. Folder permissions do not reach the members of a distribution list, which is the trap in the second mode - hence -ExpandGroups, cycle-guarded.
 #>
 [CmdletBinding()]
 param(

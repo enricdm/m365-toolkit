@@ -65,6 +65,10 @@
 .EXAMPLE
     .\New-AdminAccount.ps1 -NominalUpn 'user@contoso.com' `
         -ConditionalAccessGroupId '<group-object-id>' -AssignedRoles 'User Administrator' -ShowCredentials
+
+.NOTES
+    When to use  : Someone joins the administration team and needs their ADM account without forgetting the TAP, per-user MFA or the link back to their ordinary account.
+    Why it exists: Derives everything from the nominal account - ASCII-safe name, country, line manager, ExtensionAttribute1 link - and retries the TAP because a freshly created user lags in replication. Nine portal steps in one, and credentials are masked by default so a normal run leaves nothing usable in console scrollback or a transcript.
 #>
 
 [CmdletBinding()]

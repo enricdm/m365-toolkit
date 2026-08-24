@@ -14,6 +14,12 @@
 # both under .\Evidence\ - the kind of artefact you attach to a change record.
 # ============================================================
 
+<#
+.NOTES
+    When to use  : The phishing-simulation vendor says user reports are not reaching them, or you have just changed the transport rule and need evidence it works.
+    Why it exists: A rule that exists is not a rule that works. Only the outbound leg to the vendor proves it fired, so both legs are traced and the result is written as an evidence report of the kind you attach to a change record.
+#>
+
 param(
     [string]$AdminUPN          = "",                      # empty = prompt / reuse session
     [Parameter(Mandatory)]

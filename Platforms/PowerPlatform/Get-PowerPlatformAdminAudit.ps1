@@ -15,6 +15,8 @@
     or a permissions/API issue on the signed-in account.
 
 .NOTES
+    When to use  : Someone asks who can build apps and flows in production, or before a privileged access review that has to cover Power Platform.
+    Why it exists: There is no view in the Power Platform admin centre that lists administrators and makers across every environment at once. When the scan returns zero it does not conclude 'none': -DiagnosticEnvironmentName separates implicit access with no explicit role records from the signed-in account not being allowed to see them.
     Install module (if not already present):
         Install-Module -Name Microsoft.PowerApps.Administration.PowerShell -Force -AllowClobber
 

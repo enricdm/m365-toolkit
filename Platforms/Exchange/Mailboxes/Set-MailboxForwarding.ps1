@@ -35,6 +35,8 @@
     forward that shows in EAC, swap to -ForwardingAddress below.
 
 .NOTES
+    When to use  : A request arrives to forward the mailbox of someone on long-term leave, and you want the paper trail that says IT configured it on request.
+    Why it exists: Server-side forwarding to an external address is the exact mechanism an attacker configures after a business email compromise, and the first thing an incident responder looks for. If the target domain is not an accepted domain the script refuses to apply anything without -AllowExternalTarget, and the exported CSV is the evidence.
     Connect first:  Connect-ExchangeOnline
     The account needs Exchange Recipient Administrator or equivalent.
 

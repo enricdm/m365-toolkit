@@ -43,6 +43,8 @@
     Get-AipServiceSuperUserFeature and Get-AipServiceSuperUser.
 
 .NOTES
+    When to use  : A sensitivity label keeps applying after its policy was deleted, files stay encrypted, and not even an administrator can open them to fix it.
+    Why it exists: Five separately runnable phases with the warnings inside the script rather than in a README: phase 2 grants tenant-wide decryption, phase 4 is irreversible and takes no backup, and nothing forces phase 5 - if the run stops there, the super user assignment stays in place indefinitely with no timer and no alert.
     PREREQUISITES (READ BEFORE RUNNING)
     -----------------------------------
     1) Roles required on the executing admin account:

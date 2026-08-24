@@ -37,6 +37,10 @@
                    Administrator or equivalent)
 
 ================================================================================
+
+.NOTES
+    When to use  : Provisioning any distribution list that will receive mail from a system that relays without authenticating: a fax gateway, a scanner, a multifunction printer, an alarm.
+    Why it exists: RequireSenderAuthenticationEnabled defaults to true, which silently drops every such message with no NDR the requester ever sees. This provisions with it explicitly disabled and refuses to finish if it ends up enabled anyway. Address collision is checked before anything is created.
 #>
 
 [CmdletBinding()]

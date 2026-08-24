@@ -57,6 +57,10 @@
         -SenderMailbox 'admin@contoso.com' `
         -TenantId '<tenant-id>' -ClientId '<client-id>' `
         -CertificateThumbprint '<cert-thumbprint>' -MaxSends 10
+
+.NOTES
+    When to use  : The weekly round of notifications to owners of sites over 85%, without opening Outlook.
+    Why it exists: Signs the client assertion JWT with the certificate and calls the Graph REST endpoint directly, avoiding the MSAL assembly conflicts that happen when PnP.PowerShell or Az are loaded in the same session. -WhatIf still acquires the token, so a dry run proves certificate auth and Mail.Send are healthy while sending nothing, and -MaxSends caps the run.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]

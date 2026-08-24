@@ -25,6 +25,8 @@
     do and exits without connecting or changing anything.
 
 .NOTES
+    When to use  : Requests of the form 'I need to import my solution into the team environment'.
+    Why it exists: Grants Environment Maker on one environment rather than environment or tenant admin, checks -Execute before connecting to anything, and inspects the result explicitly because Set-AdminPowerAppEnvironmentRoleAssignment can return an error object as normal output instead of throwing. The manual Dataverse follow-up is printed rather than assumed.
     Requires modules:
         Microsoft.PowerApps.Administration.PowerShell
         Microsoft.Graph.Users   (for resolving UPN -> Azure AD Object ID)

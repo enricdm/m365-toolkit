@@ -10,6 +10,10 @@
 
   Requires an active Microsoft Graph session (Connect-MgGraph) in the caller; the
   module resolves Invoke-MgGraphRequest from the caller's session.
+
+.NOTES
+    When to use  : Imported by any new script that talks to Graph. It is the first line you write, not the last.
+    Why it exists: Invoke-GraphPaged lived in three private copies, only one was ever fixed for the phantom-record bug, and the other two kept injecting a fake record for every empty collection. An empty collection returns an EMPTY list here, never a one-element list holding the raw response, and 429s are backed off.
 #>
 
 # Private helper. Dictionary-safe property read: Invoke-MgGraphRequest returns

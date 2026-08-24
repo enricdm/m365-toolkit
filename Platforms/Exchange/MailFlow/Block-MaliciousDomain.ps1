@@ -39,6 +39,10 @@
     .\Block-MaliciousDomain.ps1 -Domain 'malicious.example' -ListType Url `
         -Notes 'Phishing campaign, ref 12345' -Execute
     Creates the Url block entry only.
+
+.NOTES
+    When to use  : An indicator of compromise arrives at three in the morning and the domain has to be blocked with a record of what was done, without duplicating an entry someone else already made.
+    Why it exists: Blocks as both Sender and Url: a sender block does nothing about a link to the domain inside a message arriving from somewhere else, and most phishing needs both entries. It also inspects Get-ConnectionInformation properly, which does not throw when there is no session - it returns nothing.
 #>
 
 [CmdletBinding()]

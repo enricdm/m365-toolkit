@@ -67,6 +67,8 @@
     .\Invoke-LicenseReclamation.ps1 -ReportPath .\report.csv -Tiers RECLAIM,CONVERT_SHARED -ApprovalColumn Approved
 
 .NOTES
+    When to use  : The reclamation plan is approved and has to be executed without destroying a former colleague's mailbox.
+    Why it exists: Re-fetches every user's live state before acting, so a stale report cannot cause a wrong removal; converts the mailbox to shared and verifies the conversion stuck BEFORE removing the licence; caps the run with -MaxChanges; and skips bundle groups that would strip other SKUs as collateral.
     Scopes: User.ReadWrite.All, Group.ReadWrite.All, Directory.Read.All, Organization.Read.All
     For CONVERT_SHARED, connect Exchange Online in the session BEFORE running.
     Removal is reversible (re-add to group / re-assign); conversion to shared is reversible

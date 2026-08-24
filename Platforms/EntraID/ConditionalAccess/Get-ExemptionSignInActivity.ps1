@@ -42,6 +42,8 @@
     Standalone run: expands the exception group itself and writes per-sign-in detail.
 
 .NOTES
+    When to use  : You already have the list of exempt accounts and now have to decide whose exemption is dropped without breaking their Monday.
+    Why it exists: Turns 'these people are exempt' into 'drop this one, scope that one to a single app, this one is already completing MFA anyway'. It also separates exclusion from a block policy - which is not an exemption - from a real MFA exemption, which is the error that inflates the total.
     Graph permissions: AuditLog.Read.All, Directory.Read.All (+ Group.Read.All if expanding a group)
     Modules: Microsoft.Graph.Authentication, .Reports (Get-MgAuditLogSignIn), .Groups
 #>

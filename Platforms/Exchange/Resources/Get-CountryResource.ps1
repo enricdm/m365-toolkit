@@ -50,6 +50,10 @@
     # Unattended, app-only certificate auth
     .\Get-CountryResource.ps1 -Country DE -AppId '<client-id>' `
         -CertThumb '<cert-thumbprint>' -Organization 'contoso.onmicrosoft.com'
+
+.NOTES
+    When to use  : Before proposing addresses for new rooms in a country, or when a subsidiary asks for its room inventory.
+    Why it exists: In a tenant grown by acquisition, resource mailboxes are named every possible way and the origin marker is only populated on some of them, so filtering on one signal misses rooms. Six signals are ORed together and the MatchedBy column shows which fired, which incidentally measures how sparse the marker really is.
 #>
 [CmdletBinding()]
 param(

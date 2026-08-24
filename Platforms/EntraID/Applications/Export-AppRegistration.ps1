@@ -22,6 +22,8 @@
       - Hygiene flag columns for quick Excel filtering
 
 .NOTES
+    When to use  : Someone asks which app registrations can be deleted, or an expired secret has just broken an integration and you need to know how many more are queued up behind it.
+    Why it exists: No portal view joins credentials, owners, API permissions and activity in one place. It also chunks the sign-in log query day by day, because Graph's server-side cursor times out mid-pagination on large tenants, and it tells you how many chunks came back empty.
     Required Graph permissions (delegated, granted to your user):
       Application.Read.All
       Directory.Read.All

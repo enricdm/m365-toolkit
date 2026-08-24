@@ -19,6 +19,10 @@
 
     Dry run by default. Nothing is written until you pass -Execute.
     Edit the $Jobs list below: one entry per group, with its Add / Remove sets.
+
+.NOTES
+    When to use  : A batch of adds and removals across several mail groups arrives and some of the addresses are external.
+    Why it exists: Resolves every add through Get-Recipient first and creates the MailContact if the address is external and absent, detects the group type to pick the right cmdlet, and treats removing a non-member as 'already absent' rather than an error, so the run is repeatable.
 #>
 
 param(

@@ -47,6 +47,8 @@
         -UrlPattern '*/sites/Example*' -ScanItems
 
 .NOTES
+    When to use  : The question 'is there content any employee in the tenant can read by accident?' comes up, usually after a leak or a sharing review.
+    Why it exists: Detection is claim-based, not name-based. The EEEU display name is localised, so matching on it produces silent false negatives in any tenant whose locale is not in the list - and a permissions scanner that reports 'clean' because it did not know how to look is worse than no scan at all.
     Requires:
       - PnP.PowerShell module installed
       - Entra app ClientId (registered by your SharePoint admin)

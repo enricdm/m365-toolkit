@@ -34,6 +34,8 @@
       -ClientId '<client-id>' -CertThumbprint '<cert-thumbprint>'
 
 .NOTES
+    When to use  : A leaked-credential alert lands on someone with VPN access, or after a suspicious VPN sign-in.
+    Why it exists: Pulls sign-ins, Identity Protection risk detections and the current risky-user list over the same window in one run. Leaked-credential and password-spray detections only mean something next to the sign-ins they correspond to, and joining them afterwards from separate exports is where the analysis stalls.
   Required Graph permissions (delegated via -Interactive, or app-only):
     AuditLog.Read.All, Directory.Read.All,
     IdentityRiskyUser.Read.All, IdentityRiskEvent.Read.All

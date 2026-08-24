@@ -36,6 +36,8 @@
         -PathFilter '*Documents/Reports*' -ClientId '<client-id>' -Tenant 'contoso.onmicrosoft.com' -Execute
 
 .NOTES
+    When to use  : Someone deletes an entire folder from their OneDrive or a library and tells you three days later.
+    Why it exists: Reports item count, size, date range and who deleted what before touching anything, then restores with exponential back-off on throttling. Restoring is idempotent, so a failed run can simply be re-run. -SiteUrl is mandatory on purpose because this acts on someone else's content.
     Prereq: site-collection admin on the target OneDrive (Set-SPOUser ... -IsSiteCollectionAdmin $true).
     Auth: app-only cert, or -Interactive.
 #>

@@ -28,6 +28,8 @@
     Dry-run is the default. Nothing changes until -Execute is passed.
 
 .NOTES
+    When to use  : Provisioning a shared team calendar, when you want the next membership change to require running nothing at all.
+    Why it exists: Access is stamped once for a mail-enabled security group instead of per user, so day-to-day membership changes never touch the mailbox. It resolves the REAL calendar folder name rather than assuming \Calendar, which is where scripts break in a multi-language tenant, and documents the hybrid sequence for creating the access group on-prem.
     AUTHENTICATION
     Two supported modes, chosen by what you pass:
       - app-only certificate: supply -AppId, -CertificateThumbprint and

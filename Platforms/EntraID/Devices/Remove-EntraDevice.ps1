@@ -54,11 +54,13 @@
     .\Remove-EntraDevice.ps1 -InputCsv .\decommissioned.csv -Execute
 
 .NOTES
+    When to use  : The Entra device inventory holds twice as many objects as there are real machines and it has to be cleaned without breaking BitLocker or Conditional Access.
+    Why it exists: Encodes the two things people get wrong: the order (Intune first, then Entra, or the object simply re-registers and the cleanup looks like it failed) and that BitLocker recovery keys are escrowed against the Entra device object. A device with no sign-in timestamp is reported and never deleted, because 'no date' is not 'an old date'.
     Requires : Microsoft.Graph.Authentication  (Install-Module Microsoft.Graph -Scope CurrentUser)
     Scopes   : Device.ReadWrite.All  (Directory.AccessAsUser.All in some tenants)
     Rights   : DESTRUCTIVE when -Execute is used. Deleting a device object cannot be undone.
 
-    Replaces (merged): Remove-EntraIDDevice.ps1, Retire_DevicesAzure.ps1
+    Replaces (merged): two scripts that removed or retired directory device objects.
     Both used the AzureAD / MSOnline modules (Remove-AzureADDevice, Get-MsolDevice),
     retired by Microsoft on 30 March 2025 and no longer functional. Rewritten on
     Microsoft Graph.

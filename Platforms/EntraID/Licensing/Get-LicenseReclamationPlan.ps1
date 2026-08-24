@@ -71,6 +71,8 @@
     .\Get-LicenseReclamationPlan.ps1 -EnrichFromExchange
 
 .NOTES
+    When to use  : A SKU runs out of seats and procurement asks whether to buy more or whether seats can be recovered.
+    Why it exists: Tiers every holder into KEEP / REVIEW / CONVERT_SHARED / RECLAIM / EXCLUDE from several independent signals and shows which signals fired on each row. It knows a shared mailbox under 50 GB needs no licence, that HQ and HS are entity codes rather than countries, and it detects an anonymised mailbox usage report instead of counting it as zero.
     READ-ONLY. Produces the CSV that Invoke-LicenseReclamation.ps1 executes.
     Scopes: User.Read.All, Directory.Read.All, AuditLog.Read.All, Reports.Read.All
     signInActivity requires Entra ID P1+ and AuditLog.Read.All.

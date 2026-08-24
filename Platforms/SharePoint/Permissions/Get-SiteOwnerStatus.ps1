@@ -61,6 +61,8 @@
         -ClientId '<client-id>' -Tenant 'contoso.onmicrosoft.com' -OutputPath .\Exports\owners.csv
 
 .NOTES
+    When to use  : You need to notify site owners about something and first need to know how many of those owners no longer work here.
+    Why it exists: Owner resolution differs by site type: group-connected sites expose owners through Graph, non-group sites keep them in the SharePoint Owners group and site collection admins, which Graph cannot see. accountEnabled is tri-state and a failed lookup is never reported as False. It also warns that PercentUsed is not a real fill percentage in a pooled-storage tenant.
     Module : PnP.PowerShell
     Auth   : App-only certificate (ClientId + Tenant + cert)
     Rights : Application permissions, admin-consented -
