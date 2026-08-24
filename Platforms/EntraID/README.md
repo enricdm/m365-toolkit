@@ -37,11 +37,9 @@ one does, this README points it out.
 | **ConditionalAccess** | | | |
 | [`Get-MfaExclusion.ps1`](ConditionalAccess/Get-MfaExclusion.ps1) | Every user excluded from MFA-enforcing CA policies, with nested groups expanded | No | app-only + cert, or interactive |
 | [`Get-ExemptionSignInActivity.ps1`](ConditionalAccess/Get-ExemptionSignInActivity.ps1) | Adds 30-day sign-in telemetry to those exemptions and says which can be dropped or narrowed | No | app-only + cert, or interactive |
-| [`Get-ExemptionUsageLocation.ps1`](ConditionalAccess/Get-ExemptionUsageLocation.ps1) | Looks up `usageLocation` for a list of UPNs | No | interactive |
 | [`Export-ConditionalAccessPolicy.ps1`](ConditionalAccess/Export-ConditionalAccessPolicy.ps1) | Exports all CA policies with every GUID resolved to a display name | No | interactive |
 | [`Export-VpnSignInLog.ps1`](ConditionalAccess/Export-VpnSignInLog.ps1) | Sign-ins for a VPN application plus Identity Protection risk detections and risky users | No | app-only + cert, or interactive |
 | **Identity** | | | |
-| [`Get-PasswordAge.ps1`](Identity/Get-PasswordAge.ps1) | Password age per enabled user in one country, flagged against a maximum-age policy | No | interactive |
 | [`Get-MissingLocationReport.ps1`](Identity/Get-MissingLocationReport.ps1) | Categorises accounts with no `usageLocation` into eight actionable buckets | No | interactive |
 | [`Export-CountryUserReport.ps1`](Identity/Export-CountryUserReport.ps1) | Country-scoped users/groups/licenses as a three-sheet workbook, delivered to SharePoint | **Yes** (uploads a file with `-Execute`) | managed identity |
 | [`New-SecurityGroup.ps1`](Identity/New-SecurityGroup.ps1) | Creates security groups from a definition file and adds members | **Yes** (with `-Execute`) | interactive |
@@ -232,26 +230,28 @@ purpose.
 .\Identity\Get-MissingLocationReport.ps1 -CsvPath .\proofpoint_export.csv
 ```
 
-#### `Get-PasswordAge.ps1`
+#### Password age, without a script
 
-A password-age report for a whole 40,000-user tenant is a spreadsheet nobody owns.
-The people who chase stale passwords work per country, and the maximum age they are
-measured against is not the same everywhere, so a single global list is both too
-long to act on and wrong for part of its rows. This is scoped on `usageLocation`
-server-side and takes the policy maximum as a parameter, which makes the output a
-list one team can actually work through.
-
-The `Status` column has three values, not two. A user whose
-`lastPasswordChangeDateTime` is absent is reported as `Unknown`, never as `OK` —
-that field is empty often enough on synchronised accounts that folding it into the
-compliant bucket would quietly inflate the pass rate. `Over policy` means measured
-and over; `OK` means measured and under; `Unknown` means the report could not tell
-and somebody has to look.
+There was one here and it has been removed: scoped to a country, it was a single
+Graph query plus a computed column, which is not worth a file. The query, if you
+need it:
 
 ```powershell
-# Password age for enabled users in one country, against a policy maximum
-.\Identity\Get-PasswordAge.ps1 -UsageLocation 'ES' -MaxAgeDays 90
+Get-MgUser -All -ConsistencyLevel eventual -CountVariable c `
+    -Filter "usageLocation eq 'ES' and accountEnabled eq true" `
+    -Property displayName,userPrincipalName,lastPasswordChangeDateTime,signInActivity |
+    Export-Csv .\password-age-ES.csv -NoTypeInformation
 ```
+
+`-ConsistencyLevel eventual -CountVariable` is not optional there: combining a
+`$filter` with `signInActivity` needs an advanced query, and without it the call
+fails rather than degrading.
+
+The part worth keeping is the classification, not the query. Report three states, not
+two: a user whose `lastPasswordChangeDateTime` is absent is `Unknown`, never `OK`.
+That field is empty often enough on synchronised accounts that folding it into the
+compliant bucket quietly inflates the pass rate — which is the same mistake, in a
+smaller place, as counting an empty read as a negative result.
 
 **Input:** parameters only, except `Get-MissingLocationReport.ps1`, which needs a
 directory-export CSV containing `Email`, `SSO ID`, `Location` columns.
@@ -316,15 +316,21 @@ imperfect signals, and I would rather it happened in a script that produces a
 reviewable spreadsheet than inside the enumeration that produces the security
 number.
 
-`Get-ExemptionUsageLocation.ps1` does the Graph half — one lookup per UPN. UPNs it
-cannot resolve are kept in the output with `Found = "No - <reason>"` rather than
-dropped, so the row count going in matches the row count coming out and nothing
-disappears from the list without saying why.
+Resolving `usageLocation` for the resulting UPN list needs no script. The Entra admin
+center exports it directly — **Identity → Users → All users → Download users** returns
+`userPrincipalName`, `usageLocation`, `accountEnabled` and `userType` — and for a
+filtered list, one pipeline does it:
 
 ```powershell
-# Resolve usageLocation for a UPN list, then classify each exception by country
-.\ConditionalAccess\Get-ExemptionUsageLocation.ps1 -TenantId '<tenant-id>' -InputCsv .\users.csv
+Import-Csv .\exempt-users.csv | ForEach-Object {
+    Get-MgUser -UserId $_.UserPrincipalName `
+               -Property UserPrincipalName,UsageLocation,AccountEnabled,UserType `
+               -ErrorAction SilentlyContinue
+} | Export-Csv .\usage-location.csv -NoTypeInformation
 ```
+
+Whatever you use, keep the UPNs that fail to resolve in the output instead of dropping
+them, so the row count going in matches the row count coming out.
 
 ### `Update-AppContact.ps1`
 

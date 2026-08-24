@@ -18,10 +18,10 @@ of it — at [enricdiaz.com/projects](https://enricdiaz.com/projects).
 
 | Platform | Scripts | What it covers |
 |---|---:|---|
-| [**Entra ID**](Platforms/EntraID/) | 18 | App registrations, federated credentials, Conditional Access, MFA exclusions, usage location, licence reclamation, device object cleanup |
+| [**Entra ID**](Platforms/EntraID/) | 16 | App registrations, federated credentials, Conditional Access, MFA exclusions, usage location, licence reclamation, device object cleanup |
 | [**Endpoint**](Platforms/Endpoint/) | 12 | Intune assignments and group membership, device and configuration exports, primary user and category maintenance, stale-device cleanup, device-side remediation pairs, out-of-support Windows |
 | [**Exchange Online**](Platforms/Exchange/) | 11 | Mail groups, shared mailboxes and calendars, forwarding, mail-flow protection and verification, resource rooms |
-| [**SharePoint Online**](Platforms/SharePoint/) | 8 | Site permissions, storage quotas and notifications, OneDrive recovery |
+| [**SharePoint Online**](Platforms/SharePoint/) | 7 | Site permissions, storage quotas and notifications, OneDrive recovery |
 | [**Active Directory**](Platforms/ActiveDirectory/) | 2 | proxyAddresses repair for hybrid identity, SMBv1 network probe |
 | [**Power Platform**](Platforms/PowerPlatform/) | 2 | Environment role audit, Environment Maker grants |
 | [**Purview**](Platforms/Purview/) | 1 | Sensitivity label and encryption removal |

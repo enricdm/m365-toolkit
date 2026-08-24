@@ -8,7 +8,6 @@ reporting tools; the three that write are marked below and each has a dry-run mo
 
 | Script | What it does | Changes state | Auth |
 |---|---|:---:|---|
-| [`Connect-PnPSite.ps1`](Connect-PnPSite.ps1) | Opens an app-only PnP connection to a site, admin center, or OneDrive | No | app-only + cert |
 | [`Clear-SpoTokenCache.ps1`](Clear-SpoTokenCache.ps1) | Purges local MSAL/WAM token caches, then reconnects — fixes "stuck identity" sign-ins | No (local caches only) | interactive |
 | [`Permissions/Get-SiteOwnerStatus.ps1`](Permissions/Get-SiteOwnerStatus.ps1) | Lists each site's owners and whether their accounts are still enabled | No | app-only + cert |
 | [`Permissions/Get-EveryoneExceptExternalGrant.ps1`](Permissions/Get-EveryoneExceptExternalGrant.ps1) | Finds "Everyone except external users" grants at site and list level | No | interactive |
@@ -51,27 +50,6 @@ Upload the certificate's public key to the app and keep the private key in
 > ```
 
 ## Usage
-
-### `Connect-PnPSite.ps1`
-
-Every app-only script in this folder needs the same four steps before it can do
-anything: find the certificate, pair it with the app registration, open the PnP
-connection, fail clearly when the certificate is not there. This is that, factored
-out, so the certificate-resolution logic exists once instead of four times.
-
-Its parameters are mandatory with no defaults, and that is the point. An earlier
-version defaulted `-Url` to one person's OneDrive, so running it with no arguments
-connected you to a colleague's files and gave no indication that anything unusual
-had happened. A wrong default on a connection cmdlet is worse than no default: it
-turns a forgotten parameter into a silent, invasive success. `-Thumbprint` is the
-one genuinely optional value — omit it and the newest non-expired certificate
-matching `-CertSubject` is used.
-
-```powershell
-# Open an app-only session (-Url is mandatory: no default target, by design)
-.\Connect-PnPSite.ps1 -Url 'https://contoso.sharepoint.com/sites/Example' `
-    -ClientId '<client-id>' -Tenant 'contoso.onmicrosoft.com'
-```
 
 ### `Clear-SpoTokenCache.ps1`
 
@@ -340,6 +318,14 @@ throttling.
 > Only first-stage recycle bin items are eligible by default (`-FirstStageOnly`).
 ## Known rough edges
 
+- **Certificate resolution is duplicated across the app-only scripts.** Each one finds its own
+  certificate and opens its own PnP connection. There used to be a `Connect-PnPSite.ps1` here
+  that claimed to factor that out, but nothing actually called it, so it was a fifth copy rather
+  than a shared one; it has been removed. The lesson it carried is worth keeping though: an early
+  version of it defaulted `-Url` to one person's OneDrive, so running it with no arguments
+  connected you to a colleague's files and looked like success. **A wrong default on a connection
+  cmdlet is worse than no default** — it turns a forgotten parameter into a silent, invasive
+  success. Every `-Url`/`-SiteUrl` in this folder is mandatory for that reason.
 - **`Get-EveryoneExceptExternalGrant.ps1` and `Get-SiteOwnerStatus.ps1` reconnect once per site.**
   `Connect-PnPOnline` is called inside the site loop, because PnP binds a connection to a single
   site. Across a large tenant that dominates the runtime — a full scan is measured in hours, not
