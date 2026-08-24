@@ -39,12 +39,21 @@ versions manage the account itself — creation included — rather than only it
 that creates the account so LAPS can adopt it solves a problem LAPS no longer has, and publishing
 one invites somebody to deploy it instead of configuring LAPS properly. Use Windows LAPS.
 
-The reasoning is kept because the failure it was built against is still worth knowing: the scripts
-it replaced each carried the same plaintext local-admin password in source, deployed to every
-device in the fleet. A shared static local administrator password is a lateral-movement primitive —
-recover it from one device and you have administrative access to every device that shares it, and
-it cannot be rotated without editing and redeploying. If you are looking at scripts that do that,
-treat the password as compromised and move to LAPS.
+Two things it found are worth keeping even though the code is gone.
+
+**A shared local-admin password is a lateral-movement primitive.** The four scripts it replaced each
+carried the same plaintext password in source, deployed to every device in the fleet. Recover it
+from one device and you have administrative access to every device that shares it, and it cannot be
+rotated without editing and redeploying. If you are looking at scripts that do that, treat the
+password as compromised and move to LAPS.
+
+**`return 1` is not `exit 1`, and in a detection script the difference inverts the result.** The
+detection half it replaced ended its account-missing branch with `return`. `return` does not set the
+process exit code, so a device that was **missing** the account exited `0` — reported compliant, and
+never remediated. The check failed in exactly the case it existed for, and nothing surfaced it,
+because a detection script that reports compliant looks identical to one that found nothing wrong.
+Anything you deploy through Intune Remediations should be tested for the exit code it actually
+returns, not the branch you think it took.
 
 ## Requirements
 
