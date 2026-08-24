@@ -27,6 +27,8 @@
     .\Get-SiteStorage.ps1 -AdminUrl 'https://contoso-admin.sharepoint.com' -TitleFilter 'FinancialPlanning'
 
 .NOTES
+    When to use  : Step 1 of the storage chain - before Set-SiteStorageQuota.ps1, to confirm the exact site URLs and capture the "before" snapshot.
+    Why it exists: Reading quota and writing quota deserve different levels of care, so they are separate scripts and the read one has no way to change anything. Its export doubles as the rollback reference for the write half. One caveat it states: PercentUsed is computed against whatever cap is set on the site, and in a pooled-storage tenant that cap is often a large shared ceiling rather than a real per-site allocation - so it spots sites with an explicit quota, and is not a ranking of who is actually full.
     Module : Microsoft.Online.SharePoint.PowerShell
     Rights : SharePoint Administrator
     Makes no changes.

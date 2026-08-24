@@ -51,6 +51,8 @@
         -ExcludeAutopilotProfile 'AP-Classrooms','AP-MeetingRooms'
 
 .NOTES
+    When to use  : After an office move or a bulk reassignment of machines.
+    Why it exists: Primary user drives licence attribution, Company Portal and support routing. Two ways in: a reviewed CSV (the safe one) or live drift. Live drift is deliberately not the default because on a shared device the 'last user' is whoever happened to sign in last, which is not an owner - hence -ExcludeAutopilotProfile.
     Requires : Microsoft.Graph.Authentication  (Install-Module Microsoft.Graph -Scope CurrentUser)
     Scopes   : DeviceManagementManagedDevices.ReadWrite.All, User.Read.All,
                DeviceManagementServiceConfig.Read.All (with -ExcludeAutopilotProfile)

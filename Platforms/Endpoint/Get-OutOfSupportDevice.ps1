@@ -6,6 +6,8 @@
     country/usageLocation and last-logged-on-user info.
 
 .NOTES
+    When to use  : A Windows version reaches end of servicing and you have to say how many machines are still behind it, and in which country.
+    Why it exists: Translates the build number into the feature-update name and joins it to the end-of-servicing date, which Intune does not do. The feature-update build is the THIRD segment of osVersion, not the first, and usersLoggedOn only exists on the beta managedDevice type - both are why earlier versions reported zero.
     - Requires module: Microsoft.Graph.Authentication  (Install-Module Microsoft.Graph -Scope CurrentUser)
     - Scopes needed:   DeviceManagementManagedDevices.Read.All, User.Read.All
     - EOL dates below assume Enterprise/Education editions (standard for corp-managed devices).

@@ -44,6 +44,8 @@
     .\Get-IntuneGroupAssignment.ps1 -GroupId '00000000-0000-0000-0000-000000000000' -IncludeEmpty
 
 .NOTES
+    When to use  : Before changing or deleting a group: what actually lands on it.
+    Why it exists: Distinguishes include from exclude assignments - earlier versions treated everything as an include, so a group used purely for exclusions looked like it was receiving policy, which inverts the meaning of the report. -IncludeEmpty also shows which object types were queried, so an absent row is not confused with an unchecked one.
     Requires : Microsoft.Graph.Authentication  (Install-Module Microsoft.Graph -Scope CurrentUser)
     Scopes   : Group.Read.All, DeviceManagementConfiguration.Read.All,
                DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All,

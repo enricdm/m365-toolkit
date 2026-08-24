@@ -58,6 +58,8 @@
     .\Export-IntuneConfiguration.ps1 -Include PlatformScripts,RemediationScripts
 
 .NOTES
+    When to use  : You need to answer "what changed in Intune last week?", which the console cannot, or you want a reviewable record of tenant configuration before a change.
+    Why it exists: Run on a schedule into a git working tree, the diff IS the history. Script bodies come back from Graph base64-encoded and are decoded to .ps1 beside the JSON so the actual code is diffable rather than an opaque blob. It is an export, not a backup: there is no restore, secrets are never returned by Graph, and assignments reference group IDs meaningless in another tenant. manifest.json records which types were queried and which failed, so zero objects reads as "none found" rather than "not checked".
     Requires : Microsoft.Graph.Authentication  (Install-Module Microsoft.Graph -Scope CurrentUser)
     Scopes   : DeviceManagementConfiguration.Read.All, DeviceManagementApps.Read.All,
                DeviceManagementManagedDevices.Read.All, DeviceManagementServiceConfig.Read.All

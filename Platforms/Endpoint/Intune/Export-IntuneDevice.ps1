@@ -69,6 +69,8 @@
     .\Export-IntuneDevice.ps1 -DeltaStatePath .\State\devices-delta.json
 
 .NOTES
+    When to use  : Full mode when you need columns the portal export does not give. Delta mode when you want a feed of devices appearing and disappearing.
+    Why it exists: Merges eight scripts that were the same query with a different hard-coded filter. The delta is honest about its limit: managedDevices has no delta endpoint, so it uses the Entra devices delta to learn WHICH devices changed, and a change that only touches the Intune side may not surface.
     Requires : Microsoft.Graph.Authentication  (Install-Module Microsoft.Graph -Scope CurrentUser)
     Scopes   : DeviceManagementManagedDevices.Read.All, Device.Read.All (delta mode only)
     Rights   : read-only. This script never writes to Intune.

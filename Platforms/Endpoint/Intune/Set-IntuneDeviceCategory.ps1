@@ -63,6 +63,8 @@
     .\Set-IntuneDeviceCategory.ps1 -MappingCsv .\name-to-category.csv -MatchOn DeviceName -Execute
 
 .NOTES
+    When to use  : Dynamic groups and reporting cannot tell a warehouse tablet from a director's laptop because device category is unset or has drifted.
+    Why it exists: Derives the category from something factual - subnet or naming convention - instead of leaving it to hand. A device with a blank subnet is reported and skipped, never given a default category, because a blank subnet means hardware inventory has not been reported yet. Subnet mode costs one Graph call per device and says so up front.
     Requires : Microsoft.Graph.Authentication  (Install-Module Microsoft.Graph -Scope CurrentUser)
     Scopes   : DeviceManagementManagedDevices.ReadWrite.All,
                DeviceManagementConfiguration.ReadWrite.All (with -CreateMissingCategory)

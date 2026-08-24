@@ -48,6 +48,8 @@
     .\Get-IntuneDeviceUser.ps1 -Platform Windows | Where-Object Status -eq 'Mismatch'
 
 .NOTES
+    When to use  : Before a licence-reassignment or device-retirement campaign, when you need to know who each machine actually belongs to.
+    Why it exists: Reports the drift between the last signed-in user and the assigned primary user, and classifies devices on named Autopilot profiles as Shared rather than Mismatch so the expected noise from classrooms and meeting rooms does not drown the real cases. A blank last user is reported as NoLoginData, which means not known, not unused.
     Requires : Microsoft.Graph.Authentication  (Install-Module Microsoft.Graph -Scope CurrentUser)
     Scopes   : DeviceManagementManagedDevices.Read.All, User.Read.All,
                DeviceManagementServiceConfig.Read.All (only with -IncludeAutopilot)

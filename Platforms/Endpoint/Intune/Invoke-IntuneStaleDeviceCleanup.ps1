@@ -60,6 +60,8 @@
         -Action Delete -MaxDevices 25 -Execute
 
 .NOTES
+    When to use  : Compliance reporting is polluted by dead device records and the machines that genuinely need attention are invisible.
+    Why it exists: Three actions with deliberately different blast radius, and one deliberate omission: Wipe is not offered, because factory-resetting a fleet from a staleness query is not a cleanup and a stale record is very often a laptop in a drawer. StaleDays below 30 is rejected and a run is capped at -MaxDevices.
     Requires : Microsoft.Graph.Authentication  (Install-Module Microsoft.Graph -Scope CurrentUser)
     Scopes   : DeviceManagementManagedDevices.ReadWrite.All
     Rights   : DESTRUCTIVE when -Execute is used. Retire and Delete cannot be undone.

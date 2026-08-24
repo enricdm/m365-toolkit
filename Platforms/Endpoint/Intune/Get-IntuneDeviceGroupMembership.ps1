@@ -48,6 +48,8 @@
     .\Get-IntuneDeviceGroupMembership.ps1 -GroupName 'GRP-Devices-Kiosk','GRP-Devices-Classrooms'
 
 .NOTES
+    When to use  : A device is getting configuration nobody assigned to it on purpose, or you are about to empty a group and do not know what hangs off it.
+    Why it exists: Device groups and user groups are not the same thing, and conflating them is the usual reason a policy appears to apply for no reason. Both are reported and labelled in MembershipVia. Dynamic membership is evaluated asynchronously, so an absent row means 'not a member right now', not 'the rule does not match'.
     Requires : Microsoft.Graph.Authentication  (Install-Module Microsoft.Graph -Scope CurrentUser)
     Scopes   : DeviceManagementManagedDevices.Read.All, Device.Read.All,
                Group.Read.All, User.Read.All (with -IncludeUserGroups)

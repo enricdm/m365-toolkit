@@ -22,6 +22,8 @@
     (which captures stdout instead).
 
 .NOTES
+    When to use  : You have to decide whether to renew desktop Visio and Project seats and the cloud reports say nobody uses them.
+    Why it exists: There is no Microsoft cloud API for desktop Visio/Project usage. The Office File MRU and UserAssist are the two supported local signals, and the script takes the later of the two, reports which fired, and states that no signal is not proof of non-use.
     DEPLOYMENT
       Intune Remediations: upload as the *detection* script, set
         "Run this script using the logged-on credentials = Yes"
