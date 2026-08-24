@@ -1,5 +1,7 @@
 # M365 Toolkit
 
+[![CI](https://github.com/enricdm/m365-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/enricdm/m365-toolkit/actions/workflows/ci.yml)
+
 PowerShell tooling for administering Microsoft 365, Entra ID and Intune at scale — identity,
 licensing, mail flow, SharePoint permissions, endpoint management and data governance.
 
@@ -110,6 +112,13 @@ code Platforms/EntraID/README.md
 ```
 
 ---
+
+## Tests
+
+The shared module carries a Pester suite in [`Tests/`](Tests/) — the first case pins down
+the phantom-record regression the module exists to prevent (an empty Graph collection must
+return an empty list, never a one-element list holding the raw response). CI runs the suite
+and error-level PSScriptAnalyzer on every push; nothing in it touches a tenant.
 
 ## Conventions
 

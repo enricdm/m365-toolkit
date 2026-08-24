@@ -1,0 +1,38 @@
+name: CI
+
+# Tests for the shared module and error-level static analysis for every
+# script. The module tests stub Invoke-MgGraphRequest, so nothing here
+# touches a tenant or needs a credential.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run Pester tests
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck
+          $result = Invoke-Pester -Path Tests -PassThru -Output Detailed
+          if ($result.FailedCount -gt 0) { exit 1 }
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: PSScriptAnalyzer (errors only)
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force
+          $findings = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+          $findings | Format-Table RuleName, ScriptName, Line, Message -AutoSize
+          if ($findings.Count -gt 0) { exit 1 }

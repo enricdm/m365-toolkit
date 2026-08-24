@@ -41,7 +41,8 @@ function Invoke-GraphPaged {
   Absolute Graph URI to start from. nextLink pages are followed automatically.
 
 .PARAMETER MaxItems
-  Stop once this many items have been collected. 0 (default) = no cap.
+  Return at most this many items. 0 (default) = no cap. The last page fetched
+  may contain more; the result is trimmed to exactly this count.
 
 .OUTPUTS
   A List[object] of items. An empty collection returns an EMPTY list - never a
@@ -60,8 +61,20 @@ function Invoke-GraphPaged {
         for ($try = 1; $try -le 5; $try++) {
             try { $resp = Invoke-MgGraphRequest -Method GET -Uri $next -ErrorAction Stop; break }
             catch {
+                # Prefer the real status code when the exception carries one;
+                # fall back to words, not to a bare "429" that could sit inside
+                # a GUID or URL in the message.
+                $status = $null
+                try {
+                    $raw = $_.Exception.Response.StatusCode
+                    # A bare [int]$null would give 0 and mask the "no status
+                    # code at all" case, so cast only when something is there.
+                    if ($null -ne $raw) { $status = [int]$raw }
+                } catch {}
                 $msg = "$($_.Exception.Message)"
-                if ($msg -match '429|throttl' -and $try -lt 5) {
+                $throttled = ($status -eq 429) -or
+                             ($null -eq $status -and $msg -match 'throttl|too many requests|status(?: code)?:? 429')
+                if ($throttled -and $try -lt 5) {
                     $wait = [math]::Pow(2, $try) * 5
                     Write-Warning "Throttled, waiting $wait s (attempt $try/5)"
                     Start-Sleep -Seconds $wait
@@ -86,6 +99,9 @@ function Invoke-GraphPaged {
 
         if ($MaxItems -gt 0 -and $out.Count -ge $MaxItems) { break }
         $next = Get-GraphProp $resp @('@odata.nextLink', 'odata.nextLink')
+    }
+    if ($MaxItems -gt 0 -and $out.Count -gt $MaxItems) {
+        $out.RemoveRange($MaxItems, $out.Count - $MaxItems)
     }
     return , $out
 }
