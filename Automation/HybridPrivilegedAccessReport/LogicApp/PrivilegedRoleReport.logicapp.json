@@ -1,0 +1,1112 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "4.0.0.0",
+    "parameters": {
+      "$connections": {
+        "defaultValue": {},
+        "type": "Object"
+      }
+    },
+    "triggers": {
+      "manual": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "schema": {}
+        }
+      }
+    },
+    "actions": {
+      "Initialize_AdminRecords": {
+        "type": "InitializeVariable",
+        "runAfter": {},
+        "inputs": {
+          "variables": [
+            {
+              "name": "AdminRecords",
+              "type": "array",
+              "value": []
+            }
+          ]
+        }
+      },
+      "Initialize_GroupAssignments": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "Initialize_HighestPrivRoles": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "GroupAssignments",
+              "type": "array",
+              "value": []
+            }
+          ]
+        }
+      },
+      "Initialize_ReviewAccounts": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "Initialize_GroupAssignments": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "ReviewAccounts",
+              "type": "array",
+              "value": []
+            }
+          ]
+        }
+      },
+      "Initialize_ReportDate": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "Initialize_ReviewAccounts": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "ReportDate",
+              "type": "string",
+              "value": "@{formatDateTime(utcNow(), 'yyyy-MM-dd')}"
+            }
+          ]
+        }
+      },
+      "Get_Role_Definitions": {
+        "type": "Http",
+        "runAfter": {
+          "Initialize_ReportDate": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "method": "GET",
+          "uri": "https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://graph.microsoft.com"
+          }
+        },
+        "runtimeConfiguration": {
+          "secureData": {
+            "properties": [
+              "outputs"
+            ]
+          }
+        }
+      },
+      "Get_Eligibility_Schedules": {
+        "type": "Http",
+        "runAfter": {
+          "Get_Role_Definitions": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "method": "GET",
+          "uri": "https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilitySchedules?$top=999",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://graph.microsoft.com"
+          }
+        },
+        "runtimeConfiguration": {
+          "secureData": {
+            "properties": [
+              "outputs"
+            ]
+          }
+        }
+      },
+      "Get_Active_Assignment_Schedules": {
+        "type": "Http",
+        "runAfter": {
+          "Get_Eligibility_Schedules": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "method": "GET",
+          "uri": "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignmentSchedules?$top=999",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://graph.microsoft.com"
+          }
+        },
+        "runtimeConfiguration": {
+          "secureData": {
+            "properties": [
+              "outputs"
+            ]
+          }
+        }
+      },
+      "Process_Eligibility_Schedules": {
+        "type": "Foreach",
+        "runAfter": {
+          "Get_Active_Assignment_Schedules": [
+            "Succeeded"
+          ]
+        },
+        "foreach": "@body('Get_Eligibility_Schedules')?['value']",
+        "actions": {
+          "Resolve_Eligible_Principal": {
+            "type": "Http",
+            "inputs": {
+              "method": "GET",
+              "uri": "@{concat('https://graph.microsoft.com/v1.0/directoryObjects/', items('Process_Eligibility_Schedules')?['principalId'])}",
+              "authentication": {
+                "type": "ManagedServiceIdentity",
+                "audience": "https://graph.microsoft.com"
+              }
+            },
+            "runAfter": {},
+            "runtimeConfiguration": {
+              "secureData": {
+                "properties": [
+                  "outputs"
+                ]
+              }
+            }
+          },
+          "Switch_Eligible_Principal_Type": {
+            "type": "Switch",
+            "runAfter": {
+              "Resolve_Eligible_Principal": [
+                "Succeeded"
+              ]
+            },
+            "expression": "@body('Resolve_Eligible_Principal')?['@odata.type']",
+            "cases": {
+              "User": {
+                "case": "#microsoft.graph.user",
+                "actions": {
+                  "Compose_Eligible_User_Record": {
+                    "type": "Compose",
+                    "inputs": {
+                      "displayName": "@coalesce(body('Get_Full_User_Eligible')?['displayName'], body('Resolve_Eligible_Principal')?['displayName'])",
+                      "userPrincipalName": "@coalesce(body('Get_Full_User_Eligible')?['userPrincipalName'], body('Resolve_Eligible_Principal')?['userPrincipalName'])",
+                      "accountType": "User",
+                      "userType": "@coalesce(body('Get_Full_User_Eligible')?['userType'], body('Resolve_Eligible_Principal')?['userType'], 'Member')",
+                      "accountEnabled": "@coalesce(body('Get_Full_User_Eligible')?['accountEnabled'], body('Resolve_Eligible_Principal')?['accountEnabled'])",
+                      "roleDisplayName": "@coalesce(first(body('Lookup_Eligible_Role'))?['displayName'], 'Custom Role')",
+                      "roleDefinitionId": "@items('Process_Eligibility_Schedules')?['roleDefinitionId']",
+                      "isBuiltInRole": "@coalesce(first(body('Lookup_Eligible_Role'))?['isBuiltIn'], false)",
+                      "assignmentState": "Eligible",
+                      "assignmentType": "Eligible",
+                      "memberType": "@items('Process_Eligibility_Schedules')?['memberType']",
+                      "assignmentPath": "Direct",
+                      "assignedViaGroup": "",
+                      "startDateTime": "@items('Process_Eligibility_Schedules')?['scheduleInfo']?['startDateTime']",
+                      "expirationType": "@items('Process_Eligibility_Schedules')?['scheduleInfo']?['expiration']?['type']",
+                      "expirationDateTime": "@coalesce(items('Process_Eligibility_Schedules')?['scheduleInfo']?['expiration']?['endDateTime'], 'Permanent')",
+                      "daysUntilExpiration": "@if(equals(items('Process_Eligibility_Schedules')?['scheduleInfo']?['expiration']?['type'], 'noExpiration'), 'N/A', string(div(sub(ticks(items('Process_Eligibility_Schedules')?['scheduleInfo']?['expiration']?['endDateTime']), ticks(utcNow())), 864000000000)))",
+                      "accountClassification": "@if(equals(coalesce(coalesce(body('Get_Full_User_Eligible')?['userPrincipalName'], body('Resolve_Eligible_Principal')?['userPrincipalName']), ''), ''), 'Review', if(and(greater(length(split(toLower(coalesce(body('Get_Full_User_Eligible')?['userPrincipalName'], body('Resolve_Eligible_Principal')?['userPrincipalName'])), '-adm-')), 1), equals(length(split(coalesce(body('Get_Full_User_Eligible')?['userPrincipalName'], body('Resolve_Eligible_Principal')?['userPrincipalName']), '-')[0]), 2)), 'Nominal Account', if(and(startsWith(toLower(split(coalesce(body('Get_Full_User_Eligible')?['userPrincipalName'], body('Resolve_Eligible_Principal')?['userPrincipalName']), '@')[0]), 'adm.'), endsWith(toLower(coalesce(body('Get_Full_User_Eligible')?['userPrincipalName'], body('Resolve_Eligible_Principal')?['userPrincipalName'])), '@admin.contoso.com')), 'Nominal Account', if(contains(split(coalesce(body('Get_Full_User_Eligible')?['userPrincipalName'], body('Resolve_Eligible_Principal')?['userPrincipalName']), '@')[0], '.'), 'Nominal Account - Review', 'Service Account'))))",
+                      "roleTier": "@if(contains(variables('AdminRoles'), items('Process_Eligibility_Schedules')?['roleDefinitionId']), 'Admin', if(contains(variables('ReaderRoles'), items('Process_Eligibility_Schedules')?['roleDefinitionId']), 'Reader', 'Custom'))"
+                    },
+                    "runAfter": {
+                      "Lookup_Eligible_Role": [
+                        "Succeeded"
+                      ],
+                      "Get_Full_User_Eligible": [
+                        "Succeeded",
+                        "Failed"
+                      ]
+                    }
+                  },
+                  "Append_Eligible_User": {
+                    "type": "AppendToArrayVariable",
+                    "runAfter": {
+                      "Compose_Eligible_User_Record": [
+                        "Succeeded"
+                      ]
+                    },
+                    "inputs": {
+                      "name": "AdminRecords",
+                      "value": "@outputs('Compose_Eligible_User_Record')"
+                    }
+                  },
+                  "Check_Eligible_User_For_Review": {
+                    "type": "If",
+                    "runAfter": {
+                      "Append_Eligible_User": [
+                        "Succeeded"
+                      ]
+                    },
+                    "expression": {
+                      "and": [
+                        {
+                          "equals": [
+                            "@outputs('Compose_Eligible_User_Record')['accountClassification']",
+                            "Nominal Account - Review"
+                          ]
+                        }
+                      ]
+                    },
+                    "actions": {
+                      "Append_Eligible_User_To_Review": {
+                        "type": "AppendToArrayVariable",
+                        "inputs": {
+                          "name": "ReviewAccounts",
+                          "value": {
+                            "userPrincipalName": "@outputs('Compose_Eligible_User_Record')['userPrincipalName']",
+                            "displayName": "@outputs('Compose_Eligible_User_Record')['displayName']",
+                            "roleDisplayName": "@outputs('Compose_Eligible_User_Record')['roleDisplayName']",
+                            "assignmentState": "Eligible",
+                            "accountEnabled": "@outputs('Compose_Eligible_User_Record')['accountEnabled']",
+                            "reason": "Looks like a nominal account but does not follow CC-ADM-Name convention"
+                          }
+                        }
+                      }
+                    },
+                    "else": {
+                      "actions": {}
+                    }
+                  },
+                  "Lookup_Eligible_Role": {
+                    "type": "Query",
+                    "runAfter": {},
+                    "inputs": {
+                      "from": "@body('Get_Role_Definitions')?['value']",
+                      "where": "@equals(item()?['id'], items('Process_Eligibility_Schedules')?['roleDefinitionId'])"
+                    }
+                  },
+                  "Get_Full_User_Eligible": {
+                    "type": "Http",
+                    "runAfter": {},
+                    "inputs": {
+                      "method": "GET",
+                      "uri": "@{concat('https://graph.microsoft.com/v1.0/users/', items('Process_Eligibility_Schedules')?['principalId'], '?$select=id,displayName,userPrincipalName,accountEnabled,userType')}",
+                      "authentication": {
+                        "type": "ManagedServiceIdentity",
+                        "audience": "https://graph.microsoft.com"
+                      }
+                    },
+                    "runtimeConfiguration": {
+                      "secureData": {
+                        "properties": [
+                          "outputs"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              "Group": {
+                "case": "#microsoft.graph.group",
+                "actions": {
+                  "Append_Eligible_Group_Assignment": {
+                    "type": "AppendToArrayVariable",
+                    "inputs": {
+                      "name": "GroupAssignments",
+                      "value": {
+                        "groupId": "@body('Resolve_Eligible_Principal')?['id']",
+                        "groupDisplayName": "@body('Resolve_Eligible_Principal')?['displayName']",
+                        "roleDisplayName": "@coalesce(first(body('Lookup_Eligible_Role_Grp'))?['displayName'], 'Custom Role')",
+                        "roleDefinitionId": "@items('Process_Eligibility_Schedules')?['roleDefinitionId']",
+                        "assignmentState": "Eligible",
+                        "expirationType": "@items('Process_Eligibility_Schedules')?['scheduleInfo']?['expiration']?['type']",
+                        "expirationDateTime": "@coalesce(items('Process_Eligibility_Schedules')?['scheduleInfo']?['expiration']?['endDateTime'], 'Permanent')"
+                      }
+                    },
+                    "runAfter": {
+                      "Lookup_Eligible_Role_Grp": [
+                        "Succeeded"
+                      ]
+                    }
+                  },
+                  "Get_Eligible_Group_Members": {
+                    "type": "Http",
+                    "runAfter": {
+                      "Append_Eligible_Group_Assignment": [
+                        "Succeeded"
+                      ]
+                    },
+                    "inputs": {
+                      "method": "GET",
+                      "uri": "@{concat('https://graph.microsoft.com/v1.0/groups/', body('Resolve_Eligible_Principal')?['id'], '/transitiveMembers/microsoft.graph.user?$select=id,displayName,userPrincipalName,accountEnabled,userType')}",
+                      "authentication": {
+                        "type": "ManagedServiceIdentity",
+                        "audience": "https://graph.microsoft.com"
+                      }
+                    },
+                    "runtimeConfiguration": {
+                      "secureData": {
+                        "properties": [
+                          "outputs"
+                        ]
+                      }
+                    }
+                  },
+                  "For_Each_Eligible_Group_Member": {
+                    "type": "Foreach",
+                    "runAfter": {
+                      "Get_Eligible_Group_Members": [
+                        "Succeeded"
+                      ]
+                    },
+                    "foreach": "@body('Get_Eligible_Group_Members')?['value']",
+                    "actions": {
+                      "Compose_Eligible_GroupMember_Record": {
+                        "type": "Compose",
+                        "inputs": {
+                          "displayName": "@items('For_Each_Eligible_Group_Member')?['displayName']",
+                          "userPrincipalName": "@items('For_Each_Eligible_Group_Member')?['userPrincipalName']",
+                          "accountType": "User",
+                          "userType": "@coalesce(items('For_Each_Eligible_Group_Member')?['userType'], 'Unknown')",
+                          "accountEnabled": "@items('For_Each_Eligible_Group_Member')?['accountEnabled']",
+                          "roleDisplayName": "@coalesce(first(body('Lookup_Eligible_Role_Grp'))?['displayName'], 'Custom Role')",
+                          "roleDefinitionId": "@items('Process_Eligibility_Schedules')?['roleDefinitionId']",
+                          "isBuiltInRole": "@coalesce(first(body('Lookup_Eligible_Role_Grp'))?['isBuiltIn'], false)",
+                          "assignmentState": "Eligible",
+                          "assignmentType": "Eligible",
+                          "memberType": "Group",
+                          "assignmentPath": "@{concat('Via group: ', body('Resolve_Eligible_Principal')?['displayName'])}",
+                          "assignedViaGroup": "@body('Resolve_Eligible_Principal')?['displayName']",
+                          "startDateTime": "@items('Process_Eligibility_Schedules')?['scheduleInfo']?['startDateTime']",
+                          "expirationType": "@items('Process_Eligibility_Schedules')?['scheduleInfo']?['expiration']?['type']",
+                          "expirationDateTime": "@coalesce(items('Process_Eligibility_Schedules')?['scheduleInfo']?['expiration']?['endDateTime'], 'Permanent')",
+                          "daysUntilExpiration": "@if(equals(items('Process_Eligibility_Schedules')?['scheduleInfo']?['expiration']?['type'], 'noExpiration'), 'N/A', string(div(sub(ticks(items('Process_Eligibility_Schedules')?['scheduleInfo']?['expiration']?['endDateTime']), ticks(utcNow())), 864000000000)))",
+                          "accountClassification": "@if(equals(coalesce(items('For_Each_Eligible_Group_Member')?['userPrincipalName'], ''), ''), 'Review', if(and(greater(length(split(toLower(items('For_Each_Eligible_Group_Member')?['userPrincipalName']), '-adm-')), 1), equals(length(split(items('For_Each_Eligible_Group_Member')?['userPrincipalName'], '-')[0]), 2)), 'Nominal Account', if(and(startsWith(toLower(split(items('For_Each_Eligible_Group_Member')?['userPrincipalName'], '@')[0]), 'adm.'), endsWith(toLower(items('For_Each_Eligible_Group_Member')?['userPrincipalName']), '@admin.contoso.com')), 'Nominal Account', if(contains(split(items('For_Each_Eligible_Group_Member')?['userPrincipalName'], '@')[0], '.'), 'Nominal Account - Review', 'Service Account'))))",
+                          "roleTier": "@if(contains(variables('AdminRoles'), items('Process_Eligibility_Schedules')?['roleDefinitionId']), 'Admin', if(contains(variables('ReaderRoles'), items('Process_Eligibility_Schedules')?['roleDefinitionId']), 'Reader', 'Custom'))"
+                        }
+                      },
+                      "Append_Eligible_GroupMember": {
+                        "type": "AppendToArrayVariable",
+                        "runAfter": {
+                          "Compose_Eligible_GroupMember_Record": [
+                            "Succeeded"
+                          ]
+                        },
+                        "inputs": {
+                          "name": "AdminRecords",
+                          "value": "@outputs('Compose_Eligible_GroupMember_Record')"
+                        }
+                      }
+                    }
+                  },
+                  "Lookup_Eligible_Role_Grp": {
+                    "type": "Query",
+                    "runAfter": {},
+                    "inputs": {
+                      "from": "@body('Get_Role_Definitions')?['value']",
+                      "where": "@equals(item()?['id'], items('Process_Eligibility_Schedules')?['roleDefinitionId'])"
+                    }
+                  }
+                }
+              }
+            },
+            "default": {
+              "actions": {}
+            }
+          }
+        },
+        "runtimeConfiguration": {
+          "concurrency": {
+            "repetitions": 2
+          }
+        }
+      },
+      "Process_Active_Schedules": {
+        "type": "Foreach",
+        "runAfter": {
+          "Process_Eligibility_Schedules": [
+            "Succeeded"
+          ]
+        },
+        "foreach": "@body('Get_Active_Assignment_Schedules')?['value']",
+        "actions": {
+          "Resolve_Active_Principal": {
+            "type": "Http",
+            "inputs": {
+              "method": "GET",
+              "uri": "@{concat('https://graph.microsoft.com/v1.0/directoryObjects/', items('Process_Active_Schedules')?['principalId'])}",
+              "authentication": {
+                "type": "ManagedServiceIdentity",
+                "audience": "https://graph.microsoft.com"
+              }
+            },
+            "runAfter": {},
+            "runtimeConfiguration": {
+              "secureData": {
+                "properties": [
+                  "outputs"
+                ]
+              }
+            }
+          },
+          "Switch_Active_Principal_Type": {
+            "type": "Switch",
+            "runAfter": {
+              "Resolve_Active_Principal": [
+                "Succeeded"
+              ]
+            },
+            "expression": "@body('Resolve_Active_Principal')?['@odata.type']",
+            "cases": {
+              "User": {
+                "case": "#microsoft.graph.user",
+                "actions": {
+                  "Compose_Active_User_Record": {
+                    "type": "Compose",
+                    "inputs": {
+                      "displayName": "@coalesce(body('Get_Full_User_Active')?['displayName'], body('Resolve_Active_Principal')?['displayName'])",
+                      "userPrincipalName": "@coalesce(body('Get_Full_User_Active')?['userPrincipalName'], body('Resolve_Active_Principal')?['userPrincipalName'])",
+                      "accountType": "User",
+                      "userType": "@coalesce(body('Get_Full_User_Active')?['userType'], body('Resolve_Active_Principal')?['userType'], 'Member')",
+                      "accountEnabled": "@coalesce(body('Get_Full_User_Active')?['accountEnabled'], body('Resolve_Active_Principal')?['accountEnabled'])",
+                      "roleDisplayName": "@coalesce(first(body('Lookup_Active_Role'))?['displayName'], 'Custom Role')",
+                      "roleDefinitionId": "@items('Process_Active_Schedules')?['roleDefinitionId']",
+                      "isBuiltInRole": "@coalesce(first(body('Lookup_Active_Role'))?['isBuiltIn'], false)",
+                      "assignmentState": "Active",
+                      "assignmentType": "@coalesce(items('Process_Active_Schedules')?['assignmentType'], 'Assigned')",
+                      "memberType": "@items('Process_Active_Schedules')?['memberType']",
+                      "assignmentPath": "Direct",
+                      "assignedViaGroup": "",
+                      "startDateTime": "@items('Process_Active_Schedules')?['scheduleInfo']?['startDateTime']",
+                      "expirationType": "@items('Process_Active_Schedules')?['scheduleInfo']?['expiration']?['type']",
+                      "expirationDateTime": "@coalesce(items('Process_Active_Schedules')?['scheduleInfo']?['expiration']?['endDateTime'], 'Permanent')",
+                      "daysUntilExpiration": "@if(equals(items('Process_Active_Schedules')?['scheduleInfo']?['expiration']?['type'], 'noExpiration'), 'N/A', string(div(sub(ticks(items('Process_Active_Schedules')?['scheduleInfo']?['expiration']?['endDateTime']), ticks(utcNow())), 864000000000)))",
+                      "accountClassification": "@if(equals(coalesce(coalesce(body('Get_Full_User_Active')?['userPrincipalName'], body('Resolve_Active_Principal')?['userPrincipalName']), ''), ''), 'Review', if(and(greater(length(split(toLower(coalesce(body('Get_Full_User_Active')?['userPrincipalName'], body('Resolve_Active_Principal')?['userPrincipalName'])), '-adm-')), 1), equals(length(split(coalesce(body('Get_Full_User_Active')?['userPrincipalName'], body('Resolve_Active_Principal')?['userPrincipalName']), '-')[0]), 2)), 'Nominal Account', if(and(startsWith(toLower(split(coalesce(body('Get_Full_User_Active')?['userPrincipalName'], body('Resolve_Active_Principal')?['userPrincipalName']), '@')[0]), 'adm.'), endsWith(toLower(coalesce(body('Get_Full_User_Active')?['userPrincipalName'], body('Resolve_Active_Principal')?['userPrincipalName'])), '@admin.contoso.com')), 'Nominal Account', if(contains(split(coalesce(body('Get_Full_User_Active')?['userPrincipalName'], body('Resolve_Active_Principal')?['userPrincipalName']), '@')[0], '.'), 'Nominal Account - Review', 'Service Account'))))",
+                      "roleTier": "@if(contains(variables('AdminRoles'), items('Process_Active_Schedules')?['roleDefinitionId']), 'Admin', if(contains(variables('ReaderRoles'), items('Process_Active_Schedules')?['roleDefinitionId']), 'Reader', 'Custom'))"
+                    },
+                    "runAfter": {
+                      "Lookup_Active_Role": [
+                        "Succeeded"
+                      ],
+                      "Get_Full_User_Active": [
+                        "Succeeded",
+                        "Failed"
+                      ]
+                    }
+                  },
+                  "Append_Active_User": {
+                    "type": "AppendToArrayVariable",
+                    "runAfter": {
+                      "Compose_Active_User_Record": [
+                        "Succeeded"
+                      ]
+                    },
+                    "inputs": {
+                      "name": "AdminRecords",
+                      "value": "@outputs('Compose_Active_User_Record')"
+                    }
+                  },
+                  "Check_Active_User_For_Review": {
+                    "type": "If",
+                    "runAfter": {
+                      "Append_Active_User": [
+                        "Succeeded"
+                      ]
+                    },
+                    "expression": {
+                      "and": [
+                        {
+                          "equals": [
+                            "@outputs('Compose_Active_User_Record')['accountClassification']",
+                            "Nominal Account - Review"
+                          ]
+                        }
+                      ]
+                    },
+                    "actions": {
+                      "Append_Active_User_To_Review": {
+                        "type": "AppendToArrayVariable",
+                        "inputs": {
+                          "name": "ReviewAccounts",
+                          "value": {
+                            "userPrincipalName": "@outputs('Compose_Active_User_Record')['userPrincipalName']",
+                            "displayName": "@outputs('Compose_Active_User_Record')['displayName']",
+                            "roleDisplayName": "@outputs('Compose_Active_User_Record')['roleDisplayName']",
+                            "assignmentState": "Active",
+                            "accountEnabled": "@outputs('Compose_Active_User_Record')['accountEnabled']",
+                            "reason": "Looks like a nominal account but does not follow CC-ADM-Name convention"
+                          }
+                        }
+                      }
+                    },
+                    "else": {
+                      "actions": {}
+                    }
+                  },
+                  "Lookup_Active_Role": {
+                    "type": "Query",
+                    "runAfter": {},
+                    "inputs": {
+                      "from": "@body('Get_Role_Definitions')?['value']",
+                      "where": "@equals(item()?['id'], items('Process_Active_Schedules')?['roleDefinitionId'])"
+                    }
+                  },
+                  "Get_Full_User_Active": {
+                    "type": "Http",
+                    "runAfter": {},
+                    "inputs": {
+                      "method": "GET",
+                      "uri": "@{concat('https://graph.microsoft.com/v1.0/users/', items('Process_Active_Schedules')?['principalId'], '?$select=id,displayName,userPrincipalName,accountEnabled,userType')}",
+                      "authentication": {
+                        "type": "ManagedServiceIdentity",
+                        "audience": "https://graph.microsoft.com"
+                      }
+                    },
+                    "runtimeConfiguration": {
+                      "secureData": {
+                        "properties": [
+                          "outputs"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              "Group": {
+                "case": "#microsoft.graph.group",
+                "actions": {
+                  "Append_Active_Group_Assignment": {
+                    "type": "AppendToArrayVariable",
+                    "inputs": {
+                      "name": "GroupAssignments",
+                      "value": {
+                        "groupId": "@body('Resolve_Active_Principal')?['id']",
+                        "groupDisplayName": "@body('Resolve_Active_Principal')?['displayName']",
+                        "roleDisplayName": "@coalesce(first(body('Lookup_Active_Role_Grp'))?['displayName'], 'Custom Role')",
+                        "roleDefinitionId": "@items('Process_Active_Schedules')?['roleDefinitionId']",
+                        "assignmentState": "Active",
+                        "expirationType": "@items('Process_Active_Schedules')?['scheduleInfo']?['expiration']?['type']",
+                        "expirationDateTime": "@coalesce(items('Process_Active_Schedules')?['scheduleInfo']?['expiration']?['endDateTime'], 'Permanent')"
+                      }
+                    },
+                    "runAfter": {
+                      "Lookup_Active_Role_Grp": [
+                        "Succeeded"
+                      ]
+                    }
+                  },
+                  "Get_Active_Group_Members": {
+                    "type": "Http",
+                    "runAfter": {
+                      "Append_Active_Group_Assignment": [
+                        "Succeeded"
+                      ]
+                    },
+                    "inputs": {
+                      "method": "GET",
+                      "uri": "@{concat('https://graph.microsoft.com/v1.0/groups/', body('Resolve_Active_Principal')?['id'], '/transitiveMembers/microsoft.graph.user?$select=id,displayName,userPrincipalName,accountEnabled,userType')}",
+                      "authentication": {
+                        "type": "ManagedServiceIdentity",
+                        "audience": "https://graph.microsoft.com"
+                      }
+                    },
+                    "runtimeConfiguration": {
+                      "secureData": {
+                        "properties": [
+                          "outputs"
+                        ]
+                      }
+                    }
+                  },
+                  "For_Each_Active_Group_Member": {
+                    "type": "Foreach",
+                    "runAfter": {
+                      "Get_Active_Group_Members": [
+                        "Succeeded"
+                      ]
+                    },
+                    "foreach": "@body('Get_Active_Group_Members')?['value']",
+                    "actions": {
+                      "Compose_Active_GroupMember_Record": {
+                        "type": "Compose",
+                        "inputs": {
+                          "displayName": "@items('For_Each_Active_Group_Member')?['displayName']",
+                          "userPrincipalName": "@items('For_Each_Active_Group_Member')?['userPrincipalName']",
+                          "accountType": "User",
+                          "userType": "@coalesce(items('For_Each_Active_Group_Member')?['userType'], 'Unknown')",
+                          "accountEnabled": "@items('For_Each_Active_Group_Member')?['accountEnabled']",
+                          "roleDisplayName": "@coalesce(first(body('Lookup_Active_Role_Grp'))?['displayName'], 'Custom Role')",
+                          "roleDefinitionId": "@items('Process_Active_Schedules')?['roleDefinitionId']",
+                          "isBuiltInRole": "@coalesce(first(body('Lookup_Active_Role_Grp'))?['isBuiltIn'], false)",
+                          "assignmentState": "Active",
+                          "assignmentType": "@coalesce(items('Process_Active_Schedules')?['assignmentType'], 'Assigned')",
+                          "memberType": "Group",
+                          "assignmentPath": "@{concat('Via group: ', body('Resolve_Active_Principal')?['displayName'])}",
+                          "assignedViaGroup": "@body('Resolve_Active_Principal')?['displayName']",
+                          "startDateTime": "@items('Process_Active_Schedules')?['scheduleInfo']?['startDateTime']",
+                          "expirationType": "@items('Process_Active_Schedules')?['scheduleInfo']?['expiration']?['type']",
+                          "expirationDateTime": "@coalesce(items('Process_Active_Schedules')?['scheduleInfo']?['expiration']?['endDateTime'], 'Permanent')",
+                          "daysUntilExpiration": "@if(equals(items('Process_Active_Schedules')?['scheduleInfo']?['expiration']?['type'], 'noExpiration'), 'N/A', string(div(sub(ticks(items('Process_Active_Schedules')?['scheduleInfo']?['expiration']?['endDateTime']), ticks(utcNow())), 864000000000)))",
+                          "accountClassification": "@if(equals(coalesce(items('For_Each_Active_Group_Member')?['userPrincipalName'], ''), ''), 'Review', if(and(greater(length(split(toLower(items('For_Each_Active_Group_Member')?['userPrincipalName']), '-adm-')), 1), equals(length(split(items('For_Each_Active_Group_Member')?['userPrincipalName'], '-')[0]), 2)), 'Nominal Account', if(and(startsWith(toLower(split(items('For_Each_Active_Group_Member')?['userPrincipalName'], '@')[0]), 'adm.'), endsWith(toLower(items('For_Each_Active_Group_Member')?['userPrincipalName']), '@admin.contoso.com')), 'Nominal Account', if(contains(split(items('For_Each_Active_Group_Member')?['userPrincipalName'], '@')[0], '.'), 'Nominal Account - Review', 'Service Account'))))",
+                          "roleTier": "@if(contains(variables('AdminRoles'), items('Process_Active_Schedules')?['roleDefinitionId']), 'Admin', if(contains(variables('ReaderRoles'), items('Process_Active_Schedules')?['roleDefinitionId']), 'Reader', 'Custom'))"
+                        }
+                      },
+                      "Append_Active_GroupMember": {
+                        "type": "AppendToArrayVariable",
+                        "runAfter": {
+                          "Compose_Active_GroupMember_Record": [
+                            "Succeeded"
+                          ]
+                        },
+                        "inputs": {
+                          "name": "AdminRecords",
+                          "value": "@outputs('Compose_Active_GroupMember_Record')"
+                        }
+                      }
+                    }
+                  },
+                  "Lookup_Active_Role_Grp": {
+                    "type": "Query",
+                    "runAfter": {},
+                    "inputs": {
+                      "from": "@body('Get_Role_Definitions')?['value']",
+                      "where": "@equals(item()?['id'], items('Process_Active_Schedules')?['roleDefinitionId'])"
+                    }
+                  }
+                }
+              }
+            },
+            "default": {
+              "actions": {}
+            }
+          }
+        },
+        "runtimeConfiguration": {
+          "concurrency": {
+            "repetitions": 2
+          }
+        }
+      },
+      "Get_Unique_Roles": {
+        "type": "Compose",
+        "runAfter": {
+          "Select_Role_Names": [
+            "Succeeded"
+          ]
+        },
+        "inputs": "@union(body('Select_Role_Names'), body('Select_Role_Names'))"
+      },
+      "Initialize_RoleSummaryTable": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "Get_Unique_Roles": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "RoleSummaryRows",
+              "type": "array",
+              "value": []
+            }
+          ]
+        }
+      },
+      "For_Each_Unique_Role": {
+        "type": "Foreach",
+        "runAfter": {
+          "Initialize_RoleSummaryTable": [
+            "Succeeded"
+          ]
+        },
+        "foreach": "@outputs('Get_Unique_Roles')",
+        "actions": {
+          "Filter_Active_For_Role": {
+            "type": "Query",
+            "runAfter": {},
+            "inputs": {
+              "from": "@variables('AdminRecords')",
+              "where": "@and(equals(item()?['roleDisplayName'], items('For_Each_Unique_Role')), equals(item()?['assignmentState'], 'Active'))"
+            }
+          },
+          "Filter_Eligible_For_Role": {
+            "type": "Query",
+            "runAfter": {},
+            "inputs": {
+              "from": "@variables('AdminRecords')",
+              "where": "@and(equals(item()?['roleDisplayName'], items('For_Each_Unique_Role')), equals(item()?['assignmentState'], 'Eligible'))"
+            }
+          },
+          "Find_First_Record_For_Role": {
+            "type": "Query",
+            "runAfter": {},
+            "inputs": {
+              "from": "@variables('AdminRecords')",
+              "where": "@equals(item()?['roleDisplayName'], items('For_Each_Unique_Role'))"
+            }
+          },
+          "Build_Role_Row": {
+            "type": "AppendToArrayVariable",
+            "runAfter": {
+              "Filter_Active_For_Role": [
+                "Succeeded"
+              ],
+              "Filter_Eligible_For_Role": [
+                "Succeeded"
+              ],
+              "Find_First_Record_For_Role": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "name": "RoleSummaryRows",
+              "value": {
+                "Role": "@items('For_Each_Unique_Role')",
+                "Tier": "@coalesce(first(body('Find_First_Record_For_Role'))?['roleTier'], 'Custom')",
+                "Active": "@length(body('Filter_Active_For_Role'))",
+                "Eligible": "@length(body('Filter_Eligible_For_Role'))",
+                "Total": "@add(length(body('Filter_Active_For_Role')), length(body('Filter_Eligible_For_Role')))"
+              }
+            }
+          }
+        },
+        "runtimeConfiguration": {
+          "concurrency": {
+            "repetitions": 1
+          }
+        }
+      },
+      "Convert_To_CSV": {
+        "type": "Table",
+        "runAfter": {
+          "Compose_NonCompliant_Callout": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "from": "@variables('AdminRecords')",
+          "format": "CSV"
+        }
+      },
+      "Send_Email_With_Attachments": {
+        "type": "ApiConnection",
+        "runAfter": {
+          "Convert_To_CSV": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['office365']['connectionId']"
+            }
+          },
+          "method": "post",
+          "path": "/v2/Mail",
+          "body": {
+            "To": "security-reports@contoso.com",
+            "Subject": "@{concat('Cloud admin audit report - ', variables('ReportDate'))}",
+            "Body": "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background:#e8e9ea; padding:24px 0;\">\n<tr><td align=\"center\">\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"740\" style=\"width:740px; max-width:740px; background:#ffffff; font-family:'Segoe UI',Arial,sans-serif; color:#1f2937;\">\n<tr><td style=\"padding:28px 36px 28px 36px;\">\n\n<h1 style=\"font-size:20px; font-weight:600; color:#003765; margin:0 0 4px 0;\">Cloud admin audit report</h1>\n<p style=\"font-size:13px; color:#878786; margin:0 0 24px 0;\">@{variables('ReportDate')}</p>\n\n<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"margin:0 0 24px 0;\">\n<tr>\n<td width=\"33%\" valign=\"top\" style=\"padding-right:6px;\">\n<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background:#bfdbeb; border-radius:8px;\">\n<tr><td style=\"padding:14px 16px;\">\n<div style=\"font-size:11px; color:#004a6b; text-transform:uppercase; letter-spacing:0.5px; font-weight:600;\">Total admin records</div>\n<div style=\"font-size:24px; font-weight:600; color:#003765; margin-top:6px;\">@{length(variables('AdminRecords'))}</div>\n<div style=\"font-size:11px; color:#004a6b; margin-top:2px;\">Eligible + Active</div>\n</td></tr></table>\n</td>\n<td width=\"33%\" valign=\"top\" style=\"padding:0 3px;\">\n<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background:#bfdbeb; border-radius:8px;\">\n<tr><td style=\"padding:14px 16px;\">\n<div style=\"font-size:11px; color:#004a6b; text-transform:uppercase; letter-spacing:0.5px; font-weight:600;\">Group assignments</div>\n<div style=\"font-size:24px; font-weight:600; color:#003765; margin-top:6px;\">@{length(variables('GroupAssignments'))}</div>\n<div style=\"font-size:11px; color:#004a6b; margin-top:2px;\">Groups holding roles</div>\n</td></tr></table>\n</td>\n<td width=\"33%\" valign=\"top\" style=\"padding-left:6px;\">\n<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background:#bfdbeb; border-radius:8px;\">\n<tr><td style=\"padding:14px 16px;\">\n<div style=\"font-size:11px; color:#004a6b; text-transform:uppercase; letter-spacing:0.5px; font-weight:600;\">Highest privileges</div>\n<div style=\"font-size:24px; font-weight:600; color:#003765; margin-top:6px;\">@{length(body('Filter_HighestPriv_Admins'))}</div>\n<div style=\"font-size:11px; color:#004a6b; margin-top:2px;\">Global / Privileged Role / Auth admins</div>\n</td></tr></table>\n</td>\n</tr>\n</table>\n\n@{outputs('Compose_NonCompliant_Callout')}\n\n<h2 style=\"font-size:15px; font-weight:600; color:#003765; margin:0 0 12px 0;\">Role breakdown</h2>\n\n<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"border-collapse:collapse; font-size:13px; border:1px solid #bfcbd9; border-radius:6px; overflow:hidden;\">\n<thead>\n<tr style=\"background:#003765; color:#ffffff;\">\n<th align=\"left\" style=\"padding:10px 12px; font-weight:600;\">Role</th>\n<th align=\"center\" style=\"padding:10px 12px; font-weight:600; width:80px;\">Active</th>\n<th align=\"center\" style=\"padding:10px 12px; font-weight:600; width:80px;\">Eligible</th>\n<th align=\"center\" style=\"padding:10px 12px; font-weight:600; width:80px;\">Total</th>\n</tr>\n</thead>\n<tbody>\n@{outputs('Combine_Table_Sections')}\n</tbody>\n</table>\n\n<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"margin:20px 0 0 0; font-size:12px;\">\n<tr>\n<td style=\"padding:4px 12px 4px 0; vertical-align:top; width:160px;\">\n<span style=\"background:#ecf5d8; color:#456818; padding:2px 8px; border-radius:3px; font-weight:500; font-size:11px;\">Nominal Account</span>\n</td>\n<td style=\"padding:4px 0; color:#878786;\">Matches CC-ADM-Name or adm.surname@admin.contoso.com</td>\n</tr>\n<tr>\n<td style=\"padding:4px 12px 4px 0; vertical-align:top;\">\n<span style=\"background:#fde6b8; color:#8a5c0a; padding:2px 8px; border-radius:3px; font-weight:500; font-size:11px;\">Nominal - Review</span>\n</td>\n<td style=\"padding:4px 0; color:#878786;\">Human-like name not following convention</td>\n</tr>\n<tr>\n<td style=\"padding:4px 12px 4px 0; vertical-align:top;\">\n<span style=\"background:#bfdbeb; color:#004a6b; padding:2px 8px; border-radius:3px; font-weight:500; font-size:11px;\">Service Account</span>\n</td>\n<td style=\"padding:4px 0; color:#878786;\">Functional account (expected variation)</td>\n</tr>\n</table>\n\n<p style=\"font-size:11px; color:#878786; margin:24px 0 0 0; padding-top:16px; border-top:1px solid #bfcbd9;\">\nAutomated report from <strong style=\"color:#003765;\">LA-Cloud-AdminReport-PROD</strong> &middot; @{formatDateTime(utcNow(), 'yyyy-MM-dd HH:mm')} UTC\n</p>\n\n</td></tr></table>\n</td></tr></table>",
+            "Importance": "Normal",
+            "Attachments": [
+              {
+                "Name": "@{concat('Report-admin-audit-', variables('ReportDate'), '.csv')}",
+                "ContentBytes": "@{base64(body('Convert_To_CSV'))}"
+              }
+            ]
+          }
+        }
+      },
+      "Select_Role_Names": {
+        "type": "Select",
+        "runAfter": {
+          "Filter_NonCompliant_Accounts": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "from": "@variables('AdminRecords')",
+          "select": "@item()?['roleDisplayName']"
+        }
+      },
+      "Filter_NonCompliant_Accounts": {
+        "type": "Query",
+        "runAfter": {
+          "Filter_HighestPriv_Admins": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "from": "@variables('AdminRecords')",
+          "where": "@equals(item()?['accountClassification'], 'Nominal Account - Review')"
+        }
+      },
+      "Build_Tiered_Rows": {
+        "type": "Foreach",
+        "runAfter": {
+          "Init_Custom_Rows": [
+            "Succeeded"
+          ]
+        },
+        "foreach": "@variables('RoleSummaryRows')",
+        "actions": {
+          "Switch_On_Tier": {
+            "type": "Switch",
+            "expression": "@items('Build_Tiered_Rows')?['Tier']",
+            "cases": {
+              "Admin": {
+                "case": "Admin",
+                "actions": {
+                  "Append_Admin": {
+                    "type": "AppendToStringVariable",
+                    "inputs": {
+                      "name": "Admin_Rows",
+                      "value": "<tr style=\"border-bottom:1px solid #bfcbd9;\"><td style=\"padding:8px 12px; color:#1f2937;\">@{items('Build_Tiered_Rows')?['Role']}</td><td align=\"center\" style=\"padding:8px 12px; color:#68971c; font-weight:500;\">@{items('Build_Tiered_Rows')?['Active']}</td><td align=\"center\" style=\"padding:8px 12px; color:#a35000; font-weight:500;\">@{items('Build_Tiered_Rows')?['Eligible']}</td><td align=\"center\" style=\"padding:8px 12px; color:#003765; font-weight:600;\">@{items('Build_Tiered_Rows')?['Total']}</td></tr>"
+                    }
+                  }
+                }
+              },
+              "Reader": {
+                "case": "Reader",
+                "actions": {
+                  "Append_Reader": {
+                    "type": "AppendToStringVariable",
+                    "inputs": {
+                      "name": "Reader_Rows",
+                      "value": "<tr style=\"border-bottom:1px solid #bfcbd9;\"><td style=\"padding:8px 12px; color:#1f2937;\">@{items('Build_Tiered_Rows')?['Role']}</td><td align=\"center\" style=\"padding:8px 12px; color:#68971c; font-weight:500;\">@{items('Build_Tiered_Rows')?['Active']}</td><td align=\"center\" style=\"padding:8px 12px; color:#a35000; font-weight:500;\">@{items('Build_Tiered_Rows')?['Eligible']}</td><td align=\"center\" style=\"padding:8px 12px; color:#003765; font-weight:600;\">@{items('Build_Tiered_Rows')?['Total']}</td></tr>"
+                    }
+                  }
+                }
+              }
+            },
+            "default": {
+              "actions": {
+                "Append_Custom": {
+                  "type": "AppendToStringVariable",
+                  "inputs": {
+                    "name": "Custom_Rows",
+                    "value": "<tr style=\"border-bottom:1px solid #bfcbd9;\"><td style=\"padding:8px 12px; color:#1f2937;\">@{items('Build_Tiered_Rows')?['Role']}</td><td align=\"center\" style=\"padding:8px 12px; color:#68971c; font-weight:500;\">@{items('Build_Tiered_Rows')?['Active']}</td><td align=\"center\" style=\"padding:8px 12px; color:#a35000; font-weight:500;\">@{items('Build_Tiered_Rows')?['Eligible']}</td><td align=\"center\" style=\"padding:8px 12px; color:#003765; font-weight:600;\">@{items('Build_Tiered_Rows')?['Total']}</td></tr>"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "runtimeConfiguration": {
+          "concurrency": {
+            "repetitions": 1
+          }
+        }
+      },
+      "Combine_Table_Sections": {
+        "type": "Compose",
+        "runAfter": {
+          "Build_Tiered_Rows": [
+            "Succeeded"
+          ]
+        },
+        "inputs": "@concat(if(equals(variables('Admin_Rows'), ''), '', concat('<tr><td colspan=\"4\" style=\"background:#bfdbeb; color:#004a6b; padding:8px 12px; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;\">Administrators</td></tr>', variables('Admin_Rows'))), if(equals(variables('Reader_Rows'), ''), '', concat('<tr><td colspan=\"4\" style=\"background:#bfdbeb; color:#004a6b; padding:8px 12px; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;\">Readers</td></tr>', variables('Reader_Rows'))), if(equals(variables('Custom_Rows'), ''), '', concat('<tr><td colspan=\"4\" style=\"background:#bfdbeb; color:#004a6b; padding:8px 12px; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;\">Custom roles</td></tr>', variables('Custom_Rows'))))"
+      },
+      "Init_NonCompliant_Rows": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "Combine_Table_Sections": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "NonCompliant_Rows_HTML",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "Build_NonCompliant_Rows": {
+        "type": "Foreach",
+        "runAfter": {
+          "Init_NonCompliant_Rows": [
+            "Succeeded"
+          ]
+        },
+        "foreach": "@body('Filter_NonCompliant_Accounts')",
+        "actions": {
+          "Append_NonCompliant_Row": {
+            "type": "AppendToStringVariable",
+            "inputs": {
+              "name": "NonCompliant_Rows_HTML",
+              "value": "<tr style=\"border-bottom:1px solid #fde6b8;\"><td style=\"padding:8px 12px; color:#8a5c0a;\">@{items('Build_NonCompliant_Rows')?['userPrincipalName']}</td><td style=\"padding:8px 12px; color:#8a5c0a;\">@{items('Build_NonCompliant_Rows')?['roleDisplayName']}</td><td style=\"padding:8px 12px; color:#8a5c0a;\">@{items('Build_NonCompliant_Rows')?['assignmentState']}</td></tr>"
+            }
+          }
+        },
+        "runtimeConfiguration": {
+          "concurrency": {
+            "repetitions": 1
+          }
+        }
+      },
+      "Initialize_AdminRoles": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "Initialize_AdminRecords": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "AdminRoles",
+              "type": "array",
+              "value": [
+                "62e90394-69f5-4237-9190-012177145e10",
+                "e8611ab8-c189-46e8-94e1-60213ab1f814",
+                "7be44c8a-adaf-4e2a-84d6-ab2649e08a13",
+                "194ae4cb-b126-40b2-bd5b-6091b380977d",
+                "fe930be7-5e62-47db-91af-98c3a49a38b1",
+                "29232cdf-9323-42fd-ade2-1d097af3e4de",
+                "f28a1f50-f6e7-4571-818b-6a12f2af6b6c",
+                "69091246-20e8-4a56-aa4d-066075b2a7a8",
+                "966707d0-3269-4727-9be2-8c3a10f19b9d",
+                "158c047a-c907-4556-b7ef-446551a6b5f7",
+                "3a2c62db-5318-420d-8d74-23affee5d9d5",
+                "b0f54661-2d74-4c50-afa3-1ec803f12efe",
+                "729827e3-9c14-49f7-bb1b-9608f156bbb8",
+                "e3973bdf-4987-49ae-837a-ba8e231c7286",
+                "fdd7a751-b60b-444a-984c-02652fe8fa1c",
+                "f023fd81-a637-4b56-95fd-791ac0226033",
+                "9b895d92-2cd3-44c7-9d02-a6ac2d5ea5c3",
+                "7495fdc4-34c4-4d15-a289-98788ce399fd"
+              ]
+            }
+          ]
+        }
+      },
+      "Initialize_ReaderRoles": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "Initialize_AdminRoles": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "ReaderRoles",
+              "type": "array",
+              "value": [
+                "f2ef992c-3afb-46b9-b7cf-a126ee74c451",
+                "5d6b6bb7-de71-4623-b4af-96380a352509",
+                "4a5d8f65-41da-4de4-8968-e035b65339cf",
+                "790c1fb9-7f7d-4f88-86a1-ef1f95c05c1b"
+              ]
+            }
+          ]
+        }
+      },
+      "Initialize_HighestPrivRoles": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "Initialize_ReaderRoles": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "HighestPrivRoles",
+              "type": "array",
+              "value": [
+                "62e90394-69f5-4237-9190-012177145e10",
+                "e8611ab8-c189-46e8-94e1-60213ab1f814",
+                "7be44c8a-adaf-4e2a-84d6-ab2649e08a13"
+              ]
+            }
+          ]
+        }
+      },
+      "Filter_HighestPriv_Admins": {
+        "type": "Query",
+        "runAfter": {
+          "Process_Active_Schedules": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "from": "@variables('AdminRecords')",
+          "where": "@contains(variables('HighestPrivRoles'), item()?['roleDefinitionId'])"
+        }
+      },
+      "Init_Admin_Rows": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "For_Each_Unique_Role": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "Admin_Rows",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "Init_Reader_Rows": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "Init_Admin_Rows": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "Reader_Rows",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "Init_Custom_Rows": {
+        "type": "InitializeVariable",
+        "runAfter": {
+          "Init_Reader_Rows": [
+            "Succeeded"
+          ]
+        },
+        "inputs": {
+          "variables": [
+            {
+              "name": "Custom_Rows",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      },
+      "Compose_NonCompliant_Callout": {
+        "type": "Compose",
+        "runAfter": {
+          "Build_NonCompliant_Rows": [
+            "Succeeded"
+          ]
+        },
+        "inputs": "@if(equals(length(body('Filter_NonCompliant_Accounts')), 0), '', concat('<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background:#fde6b8; border:1px solid #f9b232; border-radius:8px; margin:0 0 24px 0;\"><tr><td style=\"padding:14px 16px;\"><div style=\"font-size:13px; font-weight:600; color:#8a5c0a; margin-bottom:8px;\">Non-compliant accounts with admin roles (', string(length(body('Filter_NonCompliant_Accounts'))), ')</div><div style=\"font-size:12px; color:#8a5c0a; margin-bottom:10px;\">These accounts have privileged roles but do not follow the CC-ADM-Name naming convention.</div><table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"font-size:12px;\"><thead><tr style=\"background:#f9b232;\"><th align=\"left\" style=\"padding:6px 12px; color:#ffffff; font-weight:600;\">UPN</th><th align=\"left\" style=\"padding:6px 12px; color:#ffffff; font-weight:600;\">Role</th><th align=\"left\" style=\"padding:6px 12px; color:#ffffff; font-weight:600;\">State</th></tr></thead><tbody>', variables('NonCompliant_Rows_HTML'), '</tbody></table></td></tr></table>'))"
+      }
+    },
+    "outputs": {}
+  },
+  "parameters": {
+    "$connections": {
+      "value": {
+        "office365": {
+          "connectionId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/RSG-AUTOMATION/providers/Microsoft.Web/connections/office365",
+          "connectionName": "office365",
+          "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Web/locations/westeurope/managedApis/office365"
+        }
+      }
+    }
+  }
+}

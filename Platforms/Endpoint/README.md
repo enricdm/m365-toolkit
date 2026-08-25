@@ -277,7 +277,7 @@ devices — plus an on-screen summary grouped by usage location.
 **Permissions:** `DeviceManagementManagedDevices.Read.All`, `User.Read.All` (delegated).
 
 > **Version note — build-parsing fix.** An earlier revision reported **zero** out-of-support devices
-> on a fleet that actually had roughly 2,100 of them. `osVersion` is `<major>.<minor>.<build>.<revision>`
+> on a fleet where a large share of the estate was out of support. `osVersion` is `<major>.<minor>.<build>.<revision>`
 > (e.g. `10.0.19045.4046`), and the feature-update build is the **third** segment; the previous code
 > read the first, which is always the literal `10`. Every lookup missed, every device fell through to
 > "unknown version", and nothing was ever flagged — a clean, confident, entirely wrong report.

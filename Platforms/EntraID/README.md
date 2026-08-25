@@ -9,9 +9,9 @@ Most scripts are read-only and produce CSV/XLSX you can hand to someone else. Th
 six that change directory state are called out explicitly below and each one has
 its own section.
 
-These were written against a multi-country tenant of roughly 40,000 users, with
-on-prem AD synchronised by Entra Connect from several forests with different sync
-rules. That shape matters more than the headcount: attributes are populated
+These were written against a multi-country tenant with on-prem AD synchronised by
+Entra Connect from several forests, each with different sync rules. That shape is
+what matters, not the headcount: attributes are populated
 inconsistently depending on which forest an account came from, so a report that
 treats a blank field as a negative answer will be wrong for thousands of people
 and will look perfectly healthy while it is.

@@ -6,10 +6,9 @@ PowerShell tooling for administering Microsoft 365, Entra ID and Intune at scale
 licensing, mail flow, SharePoint permissions, endpoint management and data governance.
 
 These are working scripts, not demos. They were written to solve real problems in production
-tenants — most of them in a multi-country tenant of roughly 40,000 users, and the Intune tooling in
-a managed device estate of around 2,000 endpoints — then audited, parameterised and stripped of
-anything specific to those environments. Every script runs against your own tenant with your own
-credentials.
+tenants — a multi-country tenant, and a managed device estate large enough that doing any of this
+by hand was not an option — then audited, parameterised and stripped of anything specific to those
+environments. Every script runs against your own tenant with your own credentials.
 
 Several of these scripts have a write-up behind them — the problem, the design and what came
 of it — at [enricdiaz.com/projects](https://enricdiaz.com/projects).
