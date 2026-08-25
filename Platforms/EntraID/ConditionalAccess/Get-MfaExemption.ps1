@@ -194,12 +194,27 @@ foreach ($p in $mfaPolicies) {
 }
 
 Write-Step "Expanding master exception group '$MasterExceptionGroup' (transitive)"
-$me = Get-MgGroup -Filter "displayName eq '$MasterExceptionGroup'" -Property Id, DisplayName -ErrorAction SilentlyContinue
+# "Does not exist" and "could not be read" are different answers and only one of them is
+# safe to carry on from. Swallowed, a throttled or unauthorised lookup looks exactly like
+# an absent group, and the run then reports a smaller exemption count without saying so —
+# in an MFA exemption audit, which is precisely the number somebody is going to quote.
+$me = $null
+try {
+    $me = Get-MgGroup -Filter "displayName eq '$MasterExceptionGroup'" -Property Id, DisplayName -ErrorAction Stop |
+          Select-Object -First 1
+}
+catch {
+    Die ("Could not look up '{0}': {1}. Not continuing: the exemption count would be short by however many members it holds, and would look complete." -f $MasterExceptionGroup, $_.Exception.Message)
+}
+
 if ($me) {
     $m = Get-TransitiveUserIds $me.Id
     foreach ($mid in $m) { Add-Excluded $mid "Nested via $MasterExceptionGroup" '(master exception group)' }
     Write-OK ("{0} transitive user members" -f @($m).Count)
-} else { Write-Warn "Group '$MasterExceptionGroup' not found - skipping explicit expansion" }
+} else {
+    # A genuinely absent group is a legitimate configuration answer, not a failure.
+    Write-Warn "Group '$MasterExceptionGroup' does not exist - nothing to expand from it"
+}
 Write-OK ("{0} distinct excluded users" -f $excluded.Count)
 
 # ---- BULK user resolution (replaces per-user Get-MgUser) ------------------

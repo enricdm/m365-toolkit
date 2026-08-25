@@ -122,7 +122,17 @@ function Expand-ToIndividuals {
         }
         'MailUniversalDistributionGroup|MailUniversalSecurityGroup|RoomList' {
             $out = @()
-            foreach ($m in (Get-DistributionGroupMember -Identity $smtp -ResultSize Unlimited -ErrorAction SilentlyContinue)) {
+            # A group that cannot be enumerated must not come back as an empty group.
+            # Swallowed, the members simply vanish from the expansion and the permissions
+            # are then calculated against a list that is short without anything saying so.
+            $members = $null
+            try   { $members = @(Get-DistributionGroupMember -Identity $smtp -ResultSize Unlimited -ErrorAction Stop) }
+            catch {
+                Write-Warn "Could not enumerate '$Identity': $($_.Exception.Message)"
+                Write-Warn "  Its members are NOT included below. Resolve this before relying on the result."
+                return @()
+            }
+            foreach ($m in $members) {
                 $out += Expand-ToIndividuals -Identity ([string]$m.PrimarySmtpAddress) -Seen $Seen
             }
             return $out

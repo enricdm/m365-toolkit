@@ -102,10 +102,15 @@ foreach ($lt in $ListType) {
     Write-Step "Processing $lt block for '$Domain'"
 
     # Check for an existing block so we don't duplicate
+    # Both a SilentlyContinue and an empty catch used to sit on this one call, so a failed
+    # check looked identical to "no entry exists" and the script went on to add a duplicate.
+    # Adding one is harmless; being unable to tell is not, so it says which happened.
     $existing = $null
-    try {
-        $existing = Get-TenantAllowBlockListItems -ListType $lt -Block -Entry $Domain -ErrorAction SilentlyContinue
-    } catch { }
+    try   { $existing = Get-TenantAllowBlockListItems -ListType $lt -Block -Entry $Domain -ErrorAction Stop }
+    catch {
+        if ($_.Exception.Message -match 'not\s+found|no\s+entries|NoMatch') { $existing = $null }
+        else { Write-Warn "$lt duplicate check failed ($($_.Exception.Message)). Continuing; a duplicate entry is possible." }
+    }
 
     if ($existing) {
         Write-Warn "$lt entry already exists (Id: $($existing.Identity)). Skipping."
@@ -145,9 +150,17 @@ foreach ($lt in $ListType) {
 if ($Execute) {
     Write-Step 'Verifying block entries'
     foreach ($lt in $ListType) {
-        $v = Get-TenantAllowBlockListItems -ListType $lt -Block -Entry $Domain -ErrorAction SilentlyContinue
-        if ($v) { Write-OK "$lt block present for '$Domain' (Id: $($v.Identity))." }
-        else { Write-Warn "$lt block NOT found for '$Domain' - check manually." }
+        # Three outcomes, not two. A verification that could not run is not the same as a
+        # block that is absent, and reporting the first as the second either sends someone
+        # to re-apply a block that is already there, or - worse, if read the other way -
+        # gets treated as confirmation that nothing was applied.
+        $v = $null; $verifyError = $null
+        try   { $v = Get-TenantAllowBlockListItems -ListType $lt -Block -Entry $Domain -ErrorAction Stop }
+        catch { $verifyError = $_.Exception.Message }
+
+        if     ($verifyError) { Write-Warn "$lt verification could not run for '$Domain': $verifyError. The block may or may not be in place - check it in the portal." }
+        elseif ($v)           { Write-OK   "$lt block present for '$Domain' (Id: $($v.Identity))." }
+        else                  { Write-Warn "$lt block NOT present for '$Domain' - the write did not take effect." }
     }
 }
 

@@ -98,13 +98,18 @@ through and hands you a certificate it signed itself, which passes any test that
 destinations are printed at the end in a form you can paste into the ticket. It is not
 Microsoft 365 tooling at all, but it is the tool that gets a deployment unblocked.
 
-`Platforms/_Shared/Tools/Clear-M365TokenCache.ps1` clears the machine-wide MSAL, WAM and
+`Platforms/_Shared/Tools/Clear-M365TokenCache.ps1` clears the signed-in user's MSAL, WAM and
 `.IdentityService` token caches, which is the fix for a PowerShell session stuck signing in as the
-wrong account. It lives here rather than under a platform because it is not scoped to one: clearing
-those caches signs you out of **every** Microsoft 365 tool on that profile — Teams, Outlook, the
-Graph SDK — not just the one that was misbehaving. It was called `Clear-SpoTokenCache.ps1` and sat
-under `SharePoint/`, which described where the symptom usually shows up rather than what the script
-touches.
+wrong account. The caches live under `%LOCALAPPDATA%`, so it affects that profile and no other
+user on the machine — but within the profile it is broad: it signs you out of **every** Microsoft
+365 tool that uses them, Teams and Outlook included, not just the one that was misbehaving. That
+is why it is not filed under a platform. It was called `Clear-SpoTokenCache.ps1` and sat under
+`SharePoint/`, which described where the symptom shows up rather than what the script touches.
+
+It reports each cache separately rather than announcing success, because a cache file held open by
+a running Teams or Outlook is the normal case, and this is the one tool where a false confirmation
+is expensive: you run it when you are already deep in an authentication problem you do not
+understand.
 
 ---
 

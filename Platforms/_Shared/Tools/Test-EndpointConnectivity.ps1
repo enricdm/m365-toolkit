@@ -126,6 +126,8 @@ function Test-TlsHandshake {
         $ssl = New-Object System.Net.Security.SslStream($client.GetStream(),$false,$cb)
 
         $protos = [System.Security.Authentication.SslProtocols]::Tls12
+        # Tls13 does not exist as an enum member on older .NET. The catch IS the version
+        # probe: if it is not there we test with Tls12 alone, which is the correct fallback.
         try { $protos = $protos -bor [System.Security.Authentication.SslProtocols]::Tls13 } catch { }
         try   { $ssl.AuthenticateAsClient($Target,$null,$protos,$false) }
         catch { $ssl.AuthenticateAsClient($Target,$null,[System.Security.Authentication.SslProtocols]::Tls12,$false) }

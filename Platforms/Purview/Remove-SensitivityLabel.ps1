@@ -159,6 +159,8 @@ function Initialize-LogFolder {
 }
 
 function Stop-LogFolder {
+    # Stop-Transcript throws when no transcript is running, which is a normal way to
+    # reach here. Nothing to report and nothing to do about it.
     try { Stop-Transcript | Out-Null } catch { }
 }
 
@@ -207,10 +209,23 @@ try {
             Write-Host "`n[4/5] Checking super user feature state..."
             $featureState   = Get-AipServiceSuperUserFeature
             $existingUsers  = Get-AipServiceSuperUser
-            $existingGroup  = Get-AipServiceSuperUserGroup -ErrorAction SilentlyContinue
+            # No super user group configured is the normal answer and this cmdlet raises an
+            # error for it, so the error is expected. A DIFFERENT error is not, and this is
+            # the preflight for granting a right that can decrypt anything in the tenant:
+            # showing a blank where the read failed understates the privilege already there.
+            $existingGroup = $null; $groupReadError = $null
+            try   { $existingGroup = Get-AipServiceSuperUserGroup -ErrorAction Stop }
+            catch { if ($_.Exception.Message -notmatch 'not\s+(been\s+)?(set|configured)|no\s+super\s?user\s+group') { $groupReadError = $_.Exception.Message } }
+
             Write-Host "  SuperUserFeature : $featureState"
             Write-Host "  SuperUsers       : $($existingUsers -join ', ')"
-            Write-Host "  SuperUserGroup   : $existingGroup"
+            if ($groupReadError) {
+                Write-Host "  SuperUserGroup   : UNKNOWN - could not read ($groupReadError)" -ForegroundColor Yellow
+                Write-Host "  Treat this preflight as incomplete: there may be a super user group you cannot see." -ForegroundColor Yellow
+            }
+            else {
+                Write-Host "  SuperUserGroup   : $(if ($existingGroup) { $existingGroup } else { '(none configured)' })"
+            }
 
             Write-Host "`n[5/5] Reminder of what Phase 2 will do:"
             Write-Host "  - Enable-AipServiceSuperUserFeature   (idempotent)"

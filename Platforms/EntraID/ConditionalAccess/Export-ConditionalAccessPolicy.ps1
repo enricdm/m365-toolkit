@@ -97,6 +97,17 @@ function Resolve-DirectoryObject {
     if ($Id -notmatch '^[0-9a-fA-F\-]{36}$') { return $Id }
     if ($guidCache.ContainsKey($Id)) { return $guidCache[$Id] }
 
+    # A 404 from an endpoint means "this GUID is not that kind of object", which is the
+    # expected answer for four of the five tries and must not be treated as a problem.
+    # Anything else - throttling, a missing scope, a dropped connection - means the
+    # question was never actually asked. Both used to end as [UNRESOLVED], which reads
+    # as "we looked and it is not there" in an export somebody audits from.
+    $lookupFailed = $false
+    function Test-NotFound { param($ErrorRecord)
+        $m = $ErrorRecord.Exception.Message
+        return ($m -match '\b404\b' -or $m -match 'Request_ResourceNotFound' -or $m -match 'not\s+found')
+    }
+
     $resolved = $null
     foreach ($endpoint in @('users', 'groups', 'directoryRoles', 'servicePrincipals', 'directoryObjects')) {
         try {
@@ -104,23 +115,29 @@ function Resolve-DirectoryObject {
             $type = ($obj.'@odata.context' -split '#')[-1] -replace '/\$entity', ''
             $resolved = "$($obj.displayName) [$type]"
             break
-        } catch { continue }
+        } catch {
+            if (-not (Test-NotFound $_)) { $lookupFailed = $true }
+            continue
+        }
     }
     # Role template IDs (CA stores role *template* IDs, not activated role IDs)
     if (-not $resolved) {
         try {
             $obj = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/directoryRoleTemplates/$Id" -ErrorAction Stop
             $resolved = "$($obj.displayName) [roleTemplate]"
-        } catch { }
+        } catch { if (-not (Test-NotFound $_)) { $lookupFailed = $true } }
     }
     # App IDs used in targetResources are appIds, not object IDs
     if (-not $resolved) {
         try {
             $sp = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/servicePrincipals(appId='$Id')" -ErrorAction Stop
             $resolved = "$($sp.displayName) [app]"
-        } catch { }
+        } catch { if (-not (Test-NotFound $_)) { $lookupFailed = $true } }
     }
-    if (-not $resolved) { $resolved = "$Id [UNRESOLVED]" }
+    if (-not $resolved) {
+        $resolved = if ($lookupFailed) { "$Id [UNRESOLVED - lookup failed, not confirmed absent]" }
+                    else                { "$Id [UNRESOLVED]" }
+    }
 
     $guidCache[$Id] = $resolved
     return $resolved

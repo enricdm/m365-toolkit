@@ -108,8 +108,18 @@ if ($InputCsv -and (Test-Path $InputCsv)) {
     }
     Write-OK ("{0} users from {1}" -f $targets.Count, (Split-Path $InputCsv -Leaf))
 } else {
-    $g = Get-MgGroup -Filter "displayName eq '$ExceptionGroup'" -Property Id, DisplayName -ErrorAction SilentlyContinue
-    if (-not $g) { Die "Group '$ExceptionGroup' not found and no -InputCsv supplied." }
+    # Separate "no such group" from "the lookup failed", so the error names the real
+    # problem. Both stop the run, but being told a group does not exist when the actual
+    # cause was a missing permission sends you to the wrong place for twenty minutes.
+    $g = $null
+    try {
+        $g = Get-MgGroup -Filter "displayName eq '$ExceptionGroup'" -Property Id, DisplayName -ErrorAction Stop |
+             Select-Object -First 1
+    }
+    catch {
+        Die ("Could not look up group '{0}': {1}" -f $ExceptionGroup, $_.Exception.Message)
+    }
+    if (-not $g) { Die "Group '$ExceptionGroup' does not exist, and no -InputCsv was supplied." }
     Get-MgGroupTransitiveMember -GroupId $g.Id -All |
     Where-Object { $_.AdditionalProperties['@odata.type'] -eq '#microsoft.graph.user' } |
     ForEach-Object { $targets += [pscustomobject]@{ UPN = $_.AdditionalProperties['userPrincipalName']; Id = $_.Id } }
