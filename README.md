@@ -114,6 +114,12 @@ touches.
 git clone https://github.com/enricdm/m365-toolkit.git
 cd m365-toolkit
 
+# What do I need, and what have I already got? Reports; installs nothing.
+.\Platforms\_Shared\Tools\Install-ToolkitPrerequisite.ps1
+
+# Install just what the platform you care about needs
+.\Platforms\_Shared\Tools\Install-ToolkitPrerequisite.ps1 -Platform Exchange -Execute
+
 # Read the platform README first
 code Platforms/EntraID/README.md
 
