@@ -2,8 +2,8 @@
 # Get-MailboxReceiveVolume.ps1
 #
 # Counts, per mailbox, how much mail was received over a period, and splits the
-# tenant into "under the threshold" and "at or over it" — the input a
-# Proofpoint Essentials / Lite style per-mailbox licensing decision needs.
+# tenant into "under the threshold" and "at or over it" — the input any per-mailbox
+# mail-security or archiving licensing decision needs.
 #
 # Uses the Microsoft Graph "Email Activity User Detail" report — the SAME data
 # source as the M365 admin center's Email Activity report, so the numbers can be
@@ -44,10 +44,10 @@ param (
 
     [int]   $MailThreshold  = 150,
 
-    [string]$ExportCsvPath  = ".\ProofpointLiteEligibility_${Period}_$(Get-Date -Format 'yyyy-MM-dd').csv"
+    [string]$ExportCsvPath  = ".\MailboxReceiveVolume_${Period}_$(Get-Date -Format 'yyyy-MM-dd').csv"
 )
 
-Write-Host "`n=== Proofpoint Lite Eligibility Check (Graph Reports API) ===" -ForegroundColor Cyan
+Write-Host "`n=== Mailbox Receive Volume (Graph Reports API) ===" -ForegroundColor Cyan
 Write-Host "Period    : $Period"
 Write-Host "Threshold : < $MailThreshold (strictly less than)`n"
 
