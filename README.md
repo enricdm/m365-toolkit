@@ -20,7 +20,7 @@ of it — at [enricdiaz.com/projects](https://enricdiaz.com/projects).
 
 | Platform | Scripts | What it covers |
 |---|---:|---|
-| [**Entra ID**](Platforms/EntraID/) | 10 | App registrations, Conditional Access, MFA exemptions, licence reclamation, admin and security group provisioning |
+| [**Entra ID**](Platforms/EntraID/) | 12 | App registrations, Conditional Access, MFA exemptions, VPN sign-in risk review, usage location, licence reclamation, admin and security group provisioning |
 | [**Endpoint**](Platforms/Endpoint/) | 8 | Intune assignments and group membership, device exports, primary user and category maintenance, stale-device cleanup, out-of-support Windows |
 | [**Exchange Online**](Platforms/Exchange/) | 9 | Mail groups, shared mailboxes and calendars, forwarding, mail-flow protection, resource rooms |
 | [**SharePoint Online**](Platforms/SharePoint/) | 2 | Everyone-Except-External grant audit, deleted folder recovery |
@@ -77,13 +77,13 @@ Nothing is hardcoded. Tenant, application and certificate identifiers are parame
 
 ### Shared configuration
 
-`Platforms/_Shared/Data/domain-country-map.psd1` maps email domains to ISO country codes,
-shipped with `contoso.*` examples. No script in the repository reads it today — the one that
-did was pulled out — but it is kept as a reference shape, because the reason it exists is
-worth more than the file. That mapping previously lived in **six** places across one estate
-with values that had drifted apart, and a cost-allocation report ended up treating `GB`
-(2,775 users) and `UK` (2) as two different countries. If you build anything that resolves
-country from a domain, give it one source and pass the path in.
+`Platforms/_Shared/Data/domain-country-map.psd1` maps email domains to ISO country codes. It
+ships with `contoso.*` examples — **replace it with your own** before using anything that
+resolves country from a domain.
+
+It is one file rather than a constant inside a script because that mapping previously lived
+in **six** places across one estate with values that had drifted apart, and a cost-allocation
+report ended up treating `GB` (2,775 users) and `UK` (2) as two different countries.
 
 `Platforms/_Shared/Modules/M365.Common.psm1` holds helpers shared across scripts, notably
 `Invoke-GraphPaged`, which handles `@odata.nextLink` correctly. It exists because three scripts

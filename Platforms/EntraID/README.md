@@ -36,7 +36,9 @@ one does, this README points it out.
 | [`Get-MfaExemption.ps1`](ConditionalAccess/Get-MfaExemption.ps1) | Users genuinely exempt from MFA — exception-group members and direct exclusions, nested groups expanded. `-AllExclusions` for the full dump | No | app-only + cert, or interactive |
 | [`Get-ExemptionSignInActivity.ps1`](ConditionalAccess/Get-ExemptionSignInActivity.ps1) | Adds 30-day sign-in telemetry to those exemptions and says which can be dropped or narrowed | No | app-only + cert, or interactive |
 | [`Export-ConditionalAccessPolicy.ps1`](ConditionalAccess/Export-ConditionalAccessPolicy.ps1) | Exports all CA policies with every GUID resolved to a display name | No | interactive |
+| [`Export-VpnSignInRisk.ps1`](ConditionalAccess/Export-VpnSignInRisk.ps1) | Sign-ins for a VPN application plus Identity Protection risk detections and risky users | No | app-only + cert, or interactive |
 | **Identity** | | | |
+| [`Get-MissingUsageLocation.ps1`](Identity/Get-MissingUsageLocation.ps1) | Categorises accounts with no `usageLocation` into eight actionable buckets | No | interactive |
 | [`New-SecurityGroup.ps1`](Identity/New-SecurityGroup.ps1) | Creates security groups from a definition file and adds members | **Yes** (with `-Execute`) | interactive |
 | [`New-AdminAccount.ps1`](Identity/New-AdminAccount.ps1) | Creates a cloud-only admin account derived from a person's ordinary account, with TAP and per-user MFA | **Yes** | interactive |
 | **Licensing** | | | |
@@ -79,6 +81,23 @@ retains interactive sign-in logs for roughly 30 days.
 3. Pass `-ClientId '<client-id>' -CertThumbprint '<cert-thumbprint>'`. Omit both
    and the script falls back to interactive delegated auth, printing a warning.
 
+**Domain / country data**
+
+`Get-MissingUsageLocation.ps1` reads its domain-to-country mapping from a
+shared data file:
+
+```
+Platforms/_Shared/Data/domain-country-map.psd1
+```
+
+It ships with **placeholder `contoso.*` domains**. Replace them with your own
+before relying on it, or keep your own copy elsewhere and pass
+`-DomainMapPath`. Nothing in the file is secret — it is a list of your public
+e-mail domains and the country each one belongs to.
+
+The file exists because this mapping previously lived in **six** places across
+the estate with values that had drifted apart. One cost-allocation report ended
+up treating `GB` (2,775 users) and `UK` (2) as two different countries.
 
 ## Usage
 
@@ -151,6 +170,57 @@ diffing two exports against each other.
 .\ConditionalAccess\Export-ConditionalAccessPolicy.ps1 -TenantId '<tenant-id>'
 ```
 
+#### `Export-VpnSignInRisk.ps1`
+
+This one came out of a credential-exposure review of the VPN. The sign-in log on
+its own answers a narrow question — this account signed in, from this IP, and it
+worked. What it does not tell you is whether the credential that worked was already
+known to be circulating.
+
+That is why the script pulls Identity Protection risk detections and the current
+risky-user list in the same run, over the same window, and writes them alongside
+the sign-ins. Leaked credentials and password-spray detections only mean something
+next to the sign-ins they correspond to; joining them afterwards from two separate
+exports is where the analysis usually stalls. The app is discovered by display-name
+search (`-AppFilter 'Forti'` by default) so it is not pinned to one vendor, and
+`-AppId` skips discovery entirely when you already know the id.
+
+The 30-day retention limit is real and stated up front: `-DaysBack 90` will not
+return 90 days. For a longer window the sign-ins have to come from Log Analytics or
+Sentinel instead, if they are archived there.
+
+```powershell
+# VPN sign-ins + Identity Protection risk, last 30 days
+.\ConditionalAccess\Export-VpnSignInRisk.ps1 -TenantId '<tenant-id>' -AppFilter 'Forti' -Interactive
+```
+
+#### `Get-MissingUsageLocation.ps1`
+
+`usageLocation` looks like a minor attribute and is not one. Without it you cannot
+assign a license at all, and in a multi-country tenant it determines which services
+are legally available to that user. Accounts arriving from different forests get it
+populated inconsistently, so the gap is never a clean list.
+
+The point of this script is that "missing" is not one problem. It sorts every
+affected account into eight categories, because the answers are genuinely
+different: a shared or room mailbox does not need one (B), a guest does not need one
+(F), a licensed user mailbox without one is a real defect that must be fixed (C), an
+account that is missing from Entra altogether is a stale record in the source export
+and a different investigation entirely (X). Category A is the one that saves the
+most time — the attribute *is* set in Entra and the source system simply had not
+caught up, which is not a fix, it is a sync lag.
+
+The Exchange Online dependency was removed deliberately: mailbox type is resolved
+through Graph `mailboxSettings.userPurpose` instead, which avoids the WAM/MSAL
+broker failures that make EXO connections unreliable inside Windows Terminal and VS
+Code. The bulk remediation block at the bottom of the file is left commented out on
+purpose.
+
+```powershell
+# Accounts with no usageLocation, sorted into eight buckets (A-G, X)
+.\Identity\Get-MissingUsageLocation.ps1 -CsvPath .\proofpoint_export.csv
+```
+
 #### Password age, without a script
 
 There was one here and it has been removed: scoped to a country, it was a single
@@ -174,7 +244,8 @@ That field is empty often enough on synchronised accounts that folding it into t
 compliant bucket quietly inflates the pass rate — which is the same mistake, in a
 smaller place, as counting an empty read as a negative result.
 
-**Input:** parameters only.
+**Input:** parameters only, except `Get-MissingUsageLocation.ps1`, which needs a
+directory-export CSV containing `Email`, `SSO ID`, `Location` columns.
 **Output:** timestamped CSV/JSON under each script's `Exports` folder (or `-OutputPath`).
 **Permissions:** the read-only scopes in the table above.
 
