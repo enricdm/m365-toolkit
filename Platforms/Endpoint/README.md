@@ -1,10 +1,8 @@
 # Endpoint
 
-Intune device management: reporting, bulk maintenance and configuration snapshots — plus one
-device-side report.
+Intune device management: reporting, bulk maintenance and device hygiene.
 
-Everything under `Intune/` talks to Microsoft Graph from an admin workstation.
-`Get-VisioProjectDesktopUsage.ps1` runs on the device itself.
+Everything here talks to Microsoft Graph from an admin workstation.
 
 ## Index
 
@@ -16,9 +14,7 @@ Everything under `Intune/` talks to Microsoft Graph from an admin workstation.
 | [`Intune/Get-IntuneDeviceGroupMembership.ps1`](Intune/Get-IntuneDeviceGroupMembership.ps1) | Which groups a device is in, or which devices are in a group — direct and via primary user | No | delegated Graph |
 | [`Intune/Get-IntuneDeviceUserDrift.ps1`](Intune/Get-IntuneDeviceUserDrift.ps1) | Last logged-on user vs assigned primary user, with mismatch and staleness flags | No | delegated Graph |
 | [`Intune/Export-IntuneDevice.ps1`](Intune/Export-IntuneDevice.ps1) | Device inventory with platform, ownership and Android enrollment-type filters; optional delta | No | delegated Graph |
-| [`Intune/Export-IntuneConfiguration.ps1`](Intune/Export-IntuneConfiguration.ps1) | Point-in-time JSON snapshot of tenant configuration, with script bodies decoded to `.ps1` | No | delegated Graph |
 | [`Intune/Get-OutOfSupportDevice.ps1`](Intune/Get-OutOfSupportDevice.ps1) | Reports every Windows device in Intune and flags those past end-of-servicing | No | delegated Graph |
-| [`Get-VisioProjectDesktopUsage.ps1`](Get-VisioProjectDesktopUsage.ps1) | Runs on a device and reports whether Visio/Project are installed and when they were last used | No | none — runs locally |
 
 ### Maintenance — writes to the tenant
 
@@ -67,11 +63,6 @@ returns, not the branch you think it took.
 - Scopes are documented per script in `.NOTES`. Read-only scripts ask only for `.Read.All`; the
   three that write ask for `DeviceManagementManagedDevices.ReadWrite.All`.
 - Intune Administrator, or a custom role with the equivalent read/write on managed devices
-
-**`Get-VisioProjectDesktopUsage.ps1`**
-
-- Windows PowerShell 5.1 or PowerShell 7, 64-bit
-- No modules and no credentials. Must run **as the signed-in user** — it reads that user's `HKCU`.
 
 ## Usage
 
@@ -179,32 +170,6 @@ One export with filters, replacing the pattern of keeping a separate copy per fi
 > flip, a new last-sync timestamp — may not surface. **Delta mode is for tracking devices appearing
 > and disappearing, not for tracking every attribute.** For current compliance across the estate, run
 > a full export.
-
-### `Intune/Export-IntuneConfiguration.ps1`
-
-A readable, diffable record of how the tenant is configured. Run it on a schedule into a git working
-tree and `git diff` answers "what changed in Intune last week?", which the console cannot.
-
-```powershell
-# Into a git repo, same paths every run, so the diff is the history
-.\Export-IntuneConfiguration.ps1 -OutputRoot C:\IntuneSnapshot -NoTimestampFolder -IncludeAssignments
-
-# Just the scripts
-.\Export-IntuneConfiguration.ps1 -Include PlatformScripts,RemediationScripts
-```
-
-Script bodies — platform, remediation, Win32 detection and requirement rules — are returned by Graph
-base64-encoded. They are decoded and written as `.ps1` beside the JSON, so the actual code is
-diffable rather than an opaque blob.
-
-> **This is an export, not a backup product, and the difference is not pedantic.**
-> There is no restore. Secrets are never returned by Graph, so certificate payloads, VPN pre-shared
-> keys, Wi-Fi passwords and `.intunewin` contents are **absent** — a profile rebuilt from this JSON
-> would be missing them. Assignments reference group object IDs, which are meaningless in another
-> tenant. Applications export their *definition*, not their installer.
->
-> Every run writes `manifest.json` recording which types were queried and which failed, so a type
-> with zero objects reads as "none found" rather than "not checked".
 
 ### `Intune/Set-IntuneDevicePrimaryUser.ps1`
 
@@ -330,46 +295,6 @@ Two behaviours to be aware of:
   devices. Home/Pro editions reach end of servicing earlier, so adjust `$eolMap` if a meaningful part
   of the fleet runs those.
 
-### `Get-VisioProjectDesktopUsage.ps1`
-
-Desktop Visio and Project are among the few M365 products whose usage Graph does not report at all.
-To decide whether one of those licences is being used, you have to ask the endpoint — an attempt to
-measure it from the tenant side ended in the conclusion that it was not measurable there, which is
-why the answer had to come down to the device.
-
-So this runs on the device and reads the two local signals that do exist, both from the signed-in
-user's registry: the **Office File MRU** (last file opened in the app, with a timestamp) and
-**UserAssist** (last `VISIO.EXE` / `WINPROJ.EXE` launch plus a run count — ROT13-decoded, with the
-launch time read out of the FILETIME inside the value blob). It keeps the later of the two, along
-with install state, edition and executable version.
-
-Read-only — `HKCU` and `HKLM` reads only, no writes to the device. It emits a single line of JSON to
-stdout, shaped for Intune Remediations, which captures the last stdout line.
-
-```powershell
-# Intune Remediations: upload as the detection script
-.\Get-VisioProjectDesktopUsage.ps1
-
-# GPO logon script: also append a CSV row to a share
-.\Get-VisioProjectDesktopUsage.ps1 -OutputShare '\\server\share\VPUsage'
-```
-
-**Input:** optional `-OutputShare` UNC path.
-**Output:** one compact JSON line on stdout; optionally one CSV row per computer/user in the share.
-**Permissions:** none, but it must run in the user's context.
-
-For Intune Remediations, set **"Run this script using the logged-on credentials" = Yes**, **"Enforce
-script signature check" = No**, and **"Run in 64-bit PowerShell" = Yes**. Collect results from the
-Pre-remediation detection output column, or via Graph `deviceHealthScripts` run states.
-
-> **These signals are a floor, not a measurement.** MRU only populates when a file is opened or
-> saved; a user who only ever creates blank documents shows up through UserAssist instead, and a
-> freshly reimaged device has neither. **"No signal" is not proof of non-use.** Read it alongside
-> device coverage — and do not reclaim a licence on the strength of one empty result.
->
-> If it runs as SYSTEM it reports that in the `Context` field and skips the per-user signals rather
-> than reporting a misleading "never used".
-
 ## Known rough edges
 
 - **The `Intune/` scripts have not been run against a live tenant from this
@@ -385,4 +310,3 @@ Pre-remediation detection output column, or via Graph `deviceHealthScripts` run 
   place to look.
 - **`Get-IntuneDeviceGroupMembership.ps1` does not expand transitive membership.** If your assignment
   model relies on nested groups, treat the output as a starting point rather than the final answer.
-- **`Export-IntuneConfiguration.ps1` has no restore counterpart** and is not planned to have one.

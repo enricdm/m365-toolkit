@@ -32,23 +32,17 @@ one does, this README points it out.
 | [`Export-AppRegistration.ps1`](Applications/Export-AppRegistration.ps1) | Full app-registration inventory: owners, credentials, API permissions, sign-in activity, hygiene flags | No | interactive |
 | [`Export-SamlCertificateExpiry.ps1`](Applications/Export-SamlCertificateExpiry.ps1) | Lists SAML apps with their certificate expiry date and notification addresses | No | interactive |
 | [`New-M2MAppRegistration.ps1`](Applications/New-M2MAppRegistration.ps1) | Bulk-creates client app registrations + service principals for cert-based M2M auth | **Yes** | interactive |
-| [`Update-AppContact.ps1`](Applications/Update-AppContact.ps1) | Resolves a responsible human per app through five ranked signals, with a confidence score, and writes them into the tracking workbook | No (writes a file) | interactive |
-| [`Update-FederatedCredential.ps1`](Applications/Update-FederatedCredential.ps1) | Replaces an app's GitHub OIDC credentials with one all-branches FFIC per repository | **Yes** (destructive) | interactive |
 | **ConditionalAccess** | | | |
 | [`Get-MfaExemption.ps1`](ConditionalAccess/Get-MfaExemption.ps1) | Users genuinely exempt from MFA — exception-group members and direct exclusions, nested groups expanded. `-AllExclusions` for the full dump | No | app-only + cert, or interactive |
 | [`Get-ExemptionSignInActivity.ps1`](ConditionalAccess/Get-ExemptionSignInActivity.ps1) | Adds 30-day sign-in telemetry to those exemptions and says which can be dropped or narrowed | No | app-only + cert, or interactive |
 | [`Export-ConditionalAccessPolicy.ps1`](ConditionalAccess/Export-ConditionalAccessPolicy.ps1) | Exports all CA policies with every GUID resolved to a display name | No | interactive |
-| [`Export-VpnSignInRisk.ps1`](ConditionalAccess/Export-VpnSignInRisk.ps1) | Sign-ins for a VPN application plus Identity Protection risk detections and risky users | No | app-only + cert, or interactive |
 | **Identity** | | | |
-| [`Get-MissingUsageLocation.ps1`](Identity/Get-MissingUsageLocation.ps1) | Categorises accounts with no `usageLocation` into eight actionable buckets | No | interactive |
-| [`Export-CountryUserReport.ps1`](Identity/Export-CountryUserReport.ps1) | Country-scoped users/groups/licenses as a three-sheet workbook, delivered to SharePoint | **Yes** (uploads a file with `-Execute`) | managed identity |
 | [`New-SecurityGroup.ps1`](Identity/New-SecurityGroup.ps1) | Creates security groups from a definition file and adds members | **Yes** (with `-Execute`) | interactive |
 | [`New-AdminAccount.ps1`](Identity/New-AdminAccount.ps1) | Creates a cloud-only admin account derived from a person's ordinary account, with TAP and per-user MFA | **Yes** | interactive |
 | **Licensing** | | | |
 | [`Get-LicenseReclamationPlan.ps1`](Licensing/Get-LicenseReclamationPlan.ps1) | Tiers every holder of a SKU into KEEP / REVIEW / CONVERT_SHARED / RECLAIM / EXCLUDE with the reasoning shown | No | interactive |
 | [`Invoke-LicenseReclamation.ps1`](Licensing/Invoke-LicenseReclamation.ps1) | Executes that plan: removes licenses, removes group membership, optionally converts mailboxes to shared | **Yes** | interactive (+ EXO) |
 | **Devices** | | | |
-| [`Remove-EntraDevice.ps1`](Devices/Remove-EntraDevice.ps1) | Removes device objects from the directory, from an explicit list or by staleness | **Yes** (destructive) | interactive |
 
 ## Requirements
 
@@ -58,8 +52,6 @@ one does, this README points it out.
 - `Microsoft.Graph` 2.x. Individual scripts need only some sub-modules —
   `.Authentication`, `.Users`, `.Groups`, `.Applications`, `.Identity.SignIns`,
   `.Reports` — and each script lists its own in the header.
-- `ImportExcel` for the two scripts that read or write `.xlsx`
-  (`Update-AppContact.ps1`, `Export-CountryUserReport.ps1`).
 - `ExchangeOnlineManagement` only for `Invoke-LicenseReclamation.ps1 -Tiers CONVERT_SHARED`
   and `Get-LicenseReclamationPlan.ps1 -EnrichFromExchange`.
 
@@ -87,23 +79,6 @@ retains interactive sign-in logs for roughly 30 days.
 3. Pass `-ClientId '<client-id>' -CertThumbprint '<cert-thumbprint>'`. Omit both
    and the script falls back to interactive delegated auth, printing a warning.
 
-**Domain / country data**
-
-`Update-AppContact.ps1` and `Get-MissingUsageLocation.ps1` read their
-domain-to-country mapping from a shared data file:
-
-```
-Platforms/_Shared/Data/domain-country-map.psd1
-```
-
-It ships with **placeholder `contoso.*` domains**. Replace them with your own
-before relying on those scripts, or keep your own copy elsewhere and pass
-`-DomainMapPath`. Nothing in the file is secret — it is a list of your public
-e-mail domains and the country each one belongs to.
-
-The file exists because this mapping previously lived in **six** places across
-the estate with values that had drifted apart. One cost-allocation report ended
-up treating `GB` (2,775 users) and `UK` (2) as two different countries.
 
 ## Usage
 
@@ -155,9 +130,6 @@ found zero SAML apps instead of quietly writing an empty CSV.
 .\Applications\Export-SamlCertificateExpiry.ps1 -OutputPath .\Exports\saml.csv
 ```
 
-The CSV it produces is also the Tier 1 input for `Update-AppContact.ps1` below —
-a SAML notification address is the strongest available signal for who owns an app.
-
 #### `Export-ConditionalAccessPolicy.ps1`
 
 The raw policy export from Graph is close to unreadable. A policy that says
@@ -177,57 +149,6 @@ diffing two exports against each other.
 ```powershell
 # All CA policies with GUIDs resolved: raw JSON, resolved JSON, flat CSV, named locations
 .\ConditionalAccess\Export-ConditionalAccessPolicy.ps1 -TenantId '<tenant-id>'
-```
-
-#### `Export-VpnSignInRisk.ps1`
-
-This one came out of a credential-exposure review of the VPN. The sign-in log on
-its own answers a narrow question — this account signed in, from this IP, and it
-worked. What it does not tell you is whether the credential that worked was already
-known to be circulating.
-
-That is why the script pulls Identity Protection risk detections and the current
-risky-user list in the same run, over the same window, and writes them alongside
-the sign-ins. Leaked credentials and password-spray detections only mean something
-next to the sign-ins they correspond to; joining them afterwards from two separate
-exports is where the analysis usually stalls. The app is discovered by display-name
-search (`-AppFilter 'Forti'` by default) so it is not pinned to one vendor, and
-`-AppId` skips discovery entirely when you already know the id.
-
-The 30-day retention limit is real and stated up front: `-DaysBack 90` will not
-return 90 days. For a longer window the sign-ins have to come from Log Analytics or
-Sentinel instead, if they are archived there.
-
-```powershell
-# VPN sign-ins + Identity Protection risk, last 30 days
-.\ConditionalAccess\Export-VpnSignInRisk.ps1 -TenantId '<tenant-id>' -AppFilter 'Forti' -Interactive
-```
-
-#### `Get-MissingUsageLocation.ps1`
-
-`usageLocation` looks like a minor attribute and is not one. Without it you cannot
-assign a license at all, and in a multi-country tenant it determines which services
-are legally available to that user. Accounts arriving from different forests get it
-populated inconsistently, so the gap is never a clean list.
-
-The point of this script is that "missing" is not one problem. It sorts every
-affected account into eight categories, because the answers are genuinely
-different: a shared or room mailbox does not need one (B), a guest does not need one
-(F), a licensed user mailbox without one is a real defect that must be fixed (C), an
-account that is missing from Entra altogether is a stale record in the source export
-and a different investigation entirely (X). Category A is the one that saves the
-most time — the attribute *is* set in Entra and the source system simply had not
-caught up, which is not a fix, it is a sync lag.
-
-The Exchange Online dependency was removed deliberately: mailbox type is resolved
-through Graph `mailboxSettings.userPurpose` instead, which avoids the WAM/MSAL
-broker failures that make EXO connections unreliable inside Windows Terminal and VS
-Code. The bulk remediation block at the bottom of the file is left commented out on
-purpose.
-
-```powershell
-# Accounts with no usageLocation, sorted into eight buckets (A-G, X)
-.\Identity\Get-MissingUsageLocation.ps1 -CsvPath .\proofpoint_export.csv
 ```
 
 #### Password age, without a script
@@ -253,8 +174,7 @@ That field is empty often enough on synchronised accounts that folding it into t
 compliant bucket quietly inflates the pass rate — which is the same mistake, in a
 smaller place, as counting an empty read as a negative result.
 
-**Input:** parameters only, except `Get-MissingUsageLocation.ps1`, which needs a
-directory-export CSV containing `Email`, `SSO ID`, `Location` columns.
+**Input:** parameters only.
 **Output:** timestamped CSV/JSON under each script's `Exports` folder (or `-OutputPath`).
 **Permissions:** the read-only scopes in the table above.
 
@@ -348,50 +268,6 @@ Import-Csv .\exempt-users.csv | ForEach-Object {
 Whatever you use, keep the UPNs that fail to resolve in the output instead of dropping
 them, so the row count going in matches the row count coming out.
 
-### `Update-AppContact.ps1`
-
-The inventory from `Export-AppRegistration.ps1` produces a list of apps with
-expiring credentials. The next question is always the same and always the hard one:
-who do I email about this? The `owner` field is empty on a large share of apps, and
-where it is populated it frequently points at an admin account with no mailbox, or
-at somebody who left two reorganisations ago.
-
-No single signal is reliable, so this does not pick one. It resolves a contact
-through five ranked signals — SAML notification addresses, the owner's real
-corporate mailbox, the owner's admin account resolved back to a human through
-Graph, the country-team alias, the homepage TLD — falling through to a sixth tier
-that simply means "nobody could be determined" rather than inventing an answer. Each
-row records the source and a confidence score (95 down to 35) alongside the contact,
-so a reviewer can see *why* a name was chosen and where to challenge it. A lower
-tier that independently agrees on the same country adds five points, which is the
-only place where two weak signals are allowed to reinforce each other.
-
-The unresolved apps are written to their own `_manual_review.csv`. That file is the
-actual deliverable of the run: it is the list of applications in the tenant that
-nobody owns.
-
-```powershell
-# Dry run: full resolution, summary printed, nothing written
-.\Applications\Update-AppContact.ps1 -ExcelPath .\AppTracking.xlsx `
-    -SamlCsvPath .\SAML_Notification_Emails.csv -WhatIf
-
-# Real run, all signals enabled
-.\Applications\Update-AppContact.ps1 -ExcelPath .\AppTracking.xlsx `
-    -SamlCsvPath .\SAML_Notification_Emails.csv -SpCsvPath .\servicePrincipals.csv `
-    -DomainMapPath .\my-domains.psd1
-```
-
-**Input:** a tracking workbook with an `App Tracking` sheet, the CSV from
-`Export-SamlCertificateExpiry.ps1`, and optionally a service-principal export
-(without it Tier 5 is skipped). Also `-AdminAccountDomain` and
-`-CorporateDomainPattern`, which must match your tenant's naming.
-**Output:** `<input>_enriched.xlsx` plus a `_manual_review.csv` listing everything
-it could not resolve.
-**Permissions:** `Directory.Read.All` (Global Reader is enough).
-
-> **Note:** it writes only files, never the directory. `-WhatIf` skips the write;
-> existing values in the contact column are preserved unless you pass `-Force`.
-
 ### `New-M2MAppRegistration.ps1`
 
 > **Warning: creates directory objects.** One app registration plus one service
@@ -422,46 +298,6 @@ Governance metadata is stamped into the Notes field of every app it creates.
 **Input:** the names to create and an owner UPN that must already exist.
 **Output:** a summary table of display name, client id, object id and SP object id.
 **Permissions:** `Application.ReadWrite.All`, `User.Read.All`.
-
-### `Update-FederatedCredential.ps1`
-
-> **Warning: destructive.** It deletes **every** federated identity credential on the
-> target app registration before recreating them. Anything not covered by
-> `-Repository` will not come back.
-
-GitHub Actions authenticating to Azure by OIDC is the right pattern — no secret is
-stored anywhere — but the way the trust is usually configured makes it a recurring
-chore. A subject-mode federated credential pins one exact `sub` claim, for example
-`repo:org/repo:ref:refs/heads/main`. That means every new branch that needs to
-deploy requires a new credential, added by hand, by someone with
-`Application.ReadWrite.All`. With a 20-credential ceiling per app, a handful of
-repositories with a few long-lived branches each hits the wall, and the workflow
-failure that announces it looks like an authentication bug rather than a quota.
-
-Flexible federated identity credentials (FFIC) use a `claimsMatchingExpression`
-instead of a fixed subject, so a single credential matches `refs/heads/*` for a
-whole repository. One credential per repository, and no further work when branches
-come and go. That is the whole reason this script exists: it is a migration, run
-once per app, that removes a class of repeated manual work permanently.
-
-The trade is that a wildcard is broader than a pinned subject — any branch in that
-repository can now assume the identity. That is the correct scope when the
-repository is the trust boundary, which is the usual case; it is the wrong scope if
-you were relying on the subject pin to stop non-`main` branches from deploying to
-production, and in that case the pinned credential is what you want to keep.
-
-Safeguards: the current credentials are exported to timestamped JSON *before*
-anything is deleted, printed to screen, and the deletion only proceeds after you
-type `yes` at the prompt. The final state is printed for verification.
-
-```powershell
-.\Applications\Update-FederatedCredential.ps1 -TenantId '<tenant-id>' -AppId '<client-id>' `
-    -GitHubOrg 'contoso' -Repository 'platform-infra','platform-shared','platform-app'
-```
-
-**Input:** tenant, app id, GitHub organisation and the repository list.
-**Output:** `Exports\federatedCreds-backup-<stamp>.json`, plus the new credentials.
-**Permissions:** `Application.ReadWrite.All`.
 
 ### `New-SecurityGroup.ps1`
 
@@ -580,48 +416,6 @@ Two things worth knowing:
 
 PIM eligible role assignment stays manual and out of scope; pass the role you
 assigned in `-AssignedRoles` so it shows up in the end-user message.
-
-### `Export-CountryUserReport.ps1`
-
-> **Warning: uploads a file to SharePoint** when `-Execute` is passed. It makes no
-> directory changes. Without `-Execute` it builds the workbook locally and prints
-> the destination it would have used.
-
-Country IT leads keep asking the same question — who are my users, which groups are
-they in, what are they licensed for — and the honest answer is that it changes every
-week. Answering it by hand once is fine; answering it monthly for every country is
-the definition of work that should not involve a person. So this is written to run
-unattended and deliver the result where the people who asked already look.
-
-Two decisions follow from "unattended". There is no credential to store or rotate,
-because it runs as a managed identity. And `-Execute` gates only the upload, never
-the build — a dry run still produces the complete workbook locally, so the content
-can be checked before it lands on a site other people read. The rewrite from CSV to
-`.xlsx` came from the same practical direction: non-ASCII surnames plus whatever
-encoding Excel decided to assume produced a report several country teams could not
-read at all.
-
-It is written as an Azure Automation runbook authenticating with the Automation
-Account's system-assigned managed identity, so no secret is stored anywhere. The
-output is a genuine three-sheet `.xlsx` (Users / GroupMemberships / Licenses),
-normalised one row per user-group and user-license pair so it can be filtered and
-pivoted — and, incidentally, immune to the UTF-8 mojibake that the earlier CSV
-version suffered with non-ASCII names.
-
-```powershell
-# Dry run
-.\Identity\Export-CountryUserReport.ps1 -FilterValue 'ES'
-
-# Build and upload
-.\Identity\Export-CountryUserReport.ps1 -FilterValue 'ES' `
-    -SpHostName 'contoso.sharepoint.com' -SpSitePath '/sites/Example' -Execute
-```
-
-**Input:** `-FilterStrategy` (UsageLocation | Country | Group | Domain) and its
-value; the SharePoint destination.
-**Output:** `<prefix>_<yyyy-MM-dd>.xlsx` in the target library.
-**Permissions:** managed-identity app roles `User.Read.All`, `Group.Read.All`,
-`Sites.Selected` (with write granted on the target site).
 
 ### License reclamation: plan, then execute
 
@@ -751,40 +545,6 @@ user with what was attempted and what happened.
 re-assign directly). Converting a mailbox to shared is reversible with
 `Set-Mailbox -Type Regular`, but the mailbox then needs a license again.
 
-### `Devices/Remove-EntraDevice.ps1`
-
-Deleting the Entra device object is the last step of decommissioning, after the Intune record has
-gone. It is also the step people get wrong, because an Entra device object and an Intune managed
-device are two different things: the Intune record is the MDM enrollment, the Entra object is the
-directory identity that Conditional Access, device-based licensing, BitLocker key escrow and
-Windows Hello for Business all evaluate against.
-
-```powershell
-# What would be removed, by staleness. Deletes nothing.
-.\Remove-EntraDevice.ps1 -StaleDays 180
-
-# Remove a reviewed list
-.\Remove-EntraDevice.ps1 -InputCsv .\decommissioned.csv -Execute
-```
-
-**Input:** `-DeviceId`, `-InputCsv` (a `DeviceId` column, object ID or `deviceId`), or `-StaleDays`.
-**Output:** one CSV row per device with `WOULD-DELETE`, `DELETED`, `SKIPPED`, `NOT-FOUND`,
-`NO-SIGNIN-DATA` or `FAILED`.
-**Permissions:** `Device.ReadWrite.All`.
-
-> **Order matters.** Retire or delete in Intune **first**, then remove the Entra object. Removing
-> the Entra object while the device is still enrolled and in use leaves an orphan that will usually
-> re-register on next sign-in — so the cleanup looks like it failed, when in fact it was done in the
-> wrong order.
->
-> **BitLocker recovery keys are escrowed against the Entra device object.** Deleting it can make
-> those keys unrecoverable. If the hardware is being reused rather than destroyed, export the keys
-> first. The script warns but cannot check for you.
->
-> `-StaleDays` rejects values below 90 — an Entra device object going quiet for a few weeks is
-> normal — and `-MaxDevices` defaults to 25. Objects with no `approximateLastSignInDateTime` at all
-> are reported as `NO-SIGNIN-DATA` and never acted on: no timestamp is not an old timestamp.
-
 ## Known rough edges
 
 Stated plainly, because pretending otherwise would be worse:
@@ -808,9 +568,6 @@ Stated plainly, because pretending otherwise would be worse:
   role members are not counted.
 - **`New-AdminAccount.ps1` has no `-WhatIf`.** It creates a privileged account after
   a single confirmation prompt. Read the proposal before typing `Y`.
-- **`Update-AppContact.ps1` Tier 4/5 are inference, not fact.** A country-team alias
-  or a homepage TLD is a hint; the confidence score (55 and 35) says so. Treat
-  anything below 75 as a suggestion to verify.
 - **`New-SecurityGroup.ps1` mail nickname derivation is naive.** It strips
   everything outside `[a-zA-Z0-9._-]` from the display name and does not check for a
   collision with an existing nickname.

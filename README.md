@@ -20,12 +20,11 @@ of it — at [enricdiaz.com/projects](https://enricdiaz.com/projects).
 
 | Platform | Scripts | What it covers |
 |---|---:|---|
-| [**Entra ID**](Platforms/EntraID/) | 16 | App registrations, federated credentials, Conditional Access, MFA exclusions, usage location, licence reclamation, device object cleanup |
-| [**Endpoint**](Platforms/Endpoint/) | 10 | Intune assignments and group membership, device and configuration exports, primary user and category maintenance, stale-device cleanup, out-of-support Windows, desktop Visio/Project usage |
-| [**Exchange Online**](Platforms/Exchange/) | 11 | Mail groups, shared mailboxes and calendars, forwarding, mail-flow protection and verification, resource rooms |
-| [**SharePoint Online**](Platforms/SharePoint/) | 6 | Site permissions, storage quotas and notifications, OneDrive recovery |
+| [**Entra ID**](Platforms/EntraID/) | 10 | App registrations, Conditional Access, MFA exemptions, licence reclamation, admin and security group provisioning |
+| [**Endpoint**](Platforms/Endpoint/) | 8 | Intune assignments and group membership, device exports, primary user and category maintenance, stale-device cleanup, out-of-support Windows |
+| [**Exchange Online**](Platforms/Exchange/) | 9 | Mail groups, shared mailboxes and calendars, forwarding, mail-flow protection, resource rooms |
+| [**SharePoint Online**](Platforms/SharePoint/) | 2 | Everyone-Except-External grant audit, deleted folder recovery |
 | [**Active Directory**](Platforms/ActiveDirectory/) | 2 | proxyAddresses repair for hybrid identity, SMBv1 network probe |
-| [**Power Platform**](Platforms/PowerPlatform/) | 2 | Environment role audit, Environment Maker grants |
 | [**Purview**](Platforms/Purview/) | 1 | Sensitivity label and encryption removal |
 
 Each platform folder has its own README with an index, prerequisites and examples.
@@ -66,12 +65,11 @@ had that flaw were fixed; the pattern is documented where it matters.
 
 ## Requirements
 
-- **PowerShell 7.2+** (a few scripts declare `#Requires -Version 7.0`) — with two exceptions:
-  `Get-VisioProjectDesktopUsage.ps1` runs on the managed device under Windows PowerShell 5.1, and
-  `Remove-SensitivityLabel.ps1` requires it, because the `PurviewInformationProtection` module is
-  Windows PowerShell only.
+- **PowerShell 7.2+** (a few scripts declare `#Requires -Version 7.0`) — with one exception:
+  `Remove-SensitivityLabel.ps1` requires Windows PowerShell 5.1, because the
+  `PurviewInformationProtection` module is Windows PowerShell only.
 - Modules, per platform: `Microsoft.Graph`, `ExchangeOnlineManagement`, `PnP.PowerShell`,
-  `ActiveDirectory` (RSAT), `Microsoft.PowerApps.Administration.PowerShell`, `ImportExcel`
+  `ActiveDirectory` (RSAT), `ImportExcel`
 - Permissions vary per script and are documented in each README — most are read-only Graph
   scopes; the ones that write say which role they need
 
@@ -79,9 +77,13 @@ Nothing is hardcoded. Tenant, application and certificate identifiers are parame
 
 ### Shared configuration
 
-`Platforms/_Shared/Data/domain-country-map.psd1` maps email domains to ISO country codes. It
-ships with `contoso.*` examples — **replace it with your own** before using anything that
-resolves country from a domain.
+`Platforms/_Shared/Data/domain-country-map.psd1` maps email domains to ISO country codes,
+shipped with `contoso.*` examples. No script in the repository reads it today — the one that
+did was pulled out — but it is kept as a reference shape, because the reason it exists is
+worth more than the file. That mapping previously lived in **six** places across one estate
+with values that had drifted apart, and a cost-allocation report ended up treating `GB`
+(2,775 users) and `UK` (2) as two different countries. If you build anything that resolves
+country from a domain, give it one source and pass the path in.
 
 `Platforms/_Shared/Modules/M365.Common.psm1` holds helpers shared across scripts, notably
 `Invoke-GraphPaged`, which handles `@odata.nextLink` correctly. It exists because three scripts
@@ -129,9 +131,8 @@ and error-level PSScriptAnalyzer on every push; nothing in it touches a tenant.
 - Most scripts write timestamped output to `Exports/` next to the script, anchored to
   `$PSScriptRoot`, never overwriting. Seven default their output path to the **current directory**
   instead — check `-OutputPath` before running those from an arbitrary working directory
-- Where a script grants a privilege, it documents how to revoke it. Only two grant one
-  (`Grant-EnvironmentMaker.ps1` and the Purview super user), and neither revocation is scripted —
-  both are documented manual steps
+- Where a script grants a privilege, it documents how to revoke it. Only one grants one
+  (the Purview super user), and the revocation is not scripted — it is a documented manual step
 
 ---
 

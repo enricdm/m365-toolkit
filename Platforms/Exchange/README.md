@@ -28,17 +28,12 @@ Nothing needs editing inside a file to run it in your own tenant.
 | [`Mailboxes/New-SharedMailbox.ps1`](Mailboxes/New-SharedMailbox.ps1) | Creates a shared mailbox and grants FullAccess + SendAs from a CSV | **Yes** | interactive (pre-existing EXO session) |
 | [`Mailboxes/Set-MailboxForwarding.ps1`](Mailboxes/Set-MailboxForwarding.ps1) | Sets server-side forwarding on one or more mailboxes | **Yes** | interactive (pre-existing EXO session) |
 | [`MailFlow/Block-MaliciousDomain.ps1`](MailFlow/Block-MaliciousDomain.ps1) | Blocks a domain in the Tenant Allow/Block List as Sender and URL | **Yes** | interactive (reuses an existing session) |
-| [`MailFlow/Test-PhishingSimulationRule.ps1`](MailFlow/Test-PhishingSimulationRule.ps1) | Traces both legs of a phishing-report transport rule and writes an evidence report | No | interactive |
 | [`MailFlow/Get-MailboxReceiveVolume.ps1`](MailFlow/Get-MailboxReceiveVolume.ps1) | Splits mailboxes above/below a mail-volume threshold for per-mailbox licensing | No | Graph, `Reports.Read.All` |
-| [`Resources/Get-CountryResource.ps1`](Resources/Get-CountryResource.ps1) | Finds room/equipment mailboxes for a country across several weak signals | No | app-only cert **or** interactive |
 | [`Resources/Set-RoomMailbox.ps1`](Resources/Set-RoomMailbox.ps1) | Configures a room mailbox: booking policy, place metadata, who may reserve it | **Yes** | interactive |
 
 ## Requirements
 
-- **PowerShell 7.0+** — required by `Get-CountryResource.ps1` and
-  `Set-RoomMailbox.ps1`; recommended for the rest.
 - **ExchangeOnlineManagement 3.0+** (`Install-Module ExchangeOnlineManagement`).
-  `Test-PhishingSimulationRule.ps1` needs **3.7+** for `Get-MessageTraceV2`.
 - **Microsoft.Graph.Reports** — only for `Get-MailboxReceiveVolume.ps1`
   (`Install-Module Microsoft.Graph.Reports -Scope CurrentUser`).
 
@@ -54,7 +49,7 @@ Roles and permissions:
 
 ### App-only certificate auth
 
-`New-SharedCalendar.ps1` and `Get-CountryResource.ps1` can run unattended. Register
+`New-SharedCalendar.ps1` can run unattended. Register
 an app in Entra ID, give it the `Exchange.ManageAsApp` application permission, grant
 it the **Exchange Administrator** directory role, and upload a certificate. Then
 either pass the three values or set the environment variables the parameters
@@ -460,45 +455,6 @@ one.
 > Entries are created with `-NoExpiration` — they stay until someone removes them.
 > Remove with `Remove-TenantAllowBlockListItems`.
 
-### `MailFlow/Test-PhishingSimulationRule.ps1`
-
-A phishing simulation platform only works if the mail users report actually
-reaches it, which is normally arranged with a transport rule that adds the
-vendor as a recipient. The rule gets configured once and then nobody looks at it
-again — until the vendor dashboard shows suspiciously few reports and somebody
-has to answer whether the pipeline is broken or the users simply stopped
-reporting.
-
-That is a verification question rather than a configuration one, and it needs a
-different kind of evidence. A rule can exist, be enabled, and match on paper
-while still not firing — a condition that no longer fits the report button's
-format, a higher-priority rule consuming the message first. Reading the rule
-definition back tells you nothing you did not already know, so this goes after
-the traffic instead and leaves a report behind that can be attached to a ticket.
-
-Read-only. Proves whether the transport rule that forwards user-reported phishing to
-the simulation vendor is actually firing, by tracing **both legs**: inbound to the
-trap mailbox, and outbound to the vendor address the rule adds as a recipient. A
-rule that exists in the policy is not a rule that works — only the outbound leg
-proves it. Produces a CSV plus a short text evidence report you can attach to a
-change record.
-
-```powershell
-.\MailFlow\Test-PhishingSimulationRule.ps1 `
-    -TrapMailbox 'phishing.report@contoso.com' `
-    -SimulationReportAddress 'reports@simulation-vendor.example' -DaysBack 7
-```
-
-**Input:** parameters; connects on its own.
-**Output:** `Evidence/MessageTrace_<timestamp>.csv` and
-`Evidence/EvidenceReport_<timestamp>.txt`.
-**Permissions:** message trace read (View-Only Recipients / Security Reader).
-
-> **Known limitations:** message trace only retains roughly 10 days, so a larger
-> `-DaysBack` silently returns nothing for the older part of the range. The script
-> calls `Disconnect-ExchangeOnline` when it finishes, which will also close a
-> session you had open before running it.
-
 ### `MailFlow/Get-MailboxReceiveVolume.ps1`
 
 Per-mailbox mail-security licensing turns on one number: how much mail each
@@ -552,52 +508,6 @@ an on-screen summary and the top 10 highest-volume mailboxes.
 ---
 
 ## `Resources/`
-
-### `Resources/Get-CountryResource.ps1`
-
-Ask which meeting rooms belong to a given country and there is no attribute that
-answers it. Rooms were created across many years and several conventions: the
-origin marker in `CustomAttribute12` only exists on the ones provisioned after
-that convention did, some have a `UsageLocation`, some announce their country
-only in a display-name token or in the shape of their SMTP address. Filter on any
-single signal and you get a short, confident, wrong list — and the rooms you
-missed are invisible, because nothing failed.
-
-Hence five weak signals ORed together rather than one strong one, and the
-`MatchedBy` column, which is the honest part of the output: "40 rooms, 9 of them
-found only by a name pattern" is a visibly different answer from "40 rooms, all
-marked", and it lets you judge how much to trust the total instead of taking it
-on faith.
-
-Read-only. Finds room and equipment mailboxes belonging to a country.
-
-In a tenant that grew by acquisition, resource mailboxes are named every possible
-way and the origin marker in `extensionAttribute12` is only populated on some of
-them. Filtering on any single signal misses rooms. This ORs several weak signals
-together — marker, usage location, country token anywhere in the display name, full
-country name, address convention, plus any extra pattern you pass — and reports a
-`MatchedBy` column showing which ones fired, so you can see how sparse the marker
-actually is instead of trusting it.
-
-`-CheckAddress` additionally reports whether proposed addresses are already in use
-across **all** recipient types, not just resources. That is the check you run before
-proposing new room addresses.
-
-```powershell
-# All rooms and equipment for a country
-.\Resources\Get-CountryResource.ps1 -Country HU
-
-# Rooms only, plus an in-use check on proposed addresses, in one pass
-.\Resources\Get-CountryResource.ps1 -Country HU -ResourceType Room -CheckAddress `
-    'RESHU.MR.RoomOne@contoso.com','RESHU.MR.RoomTwo@contoso.com'
-```
-
-**Input:** parameters. `-MarkerPrefix`, `-AddressPrefix` and `-Domain` are the
-organisation-specific tokens; the defaults are placeholders, so set them to your own
-conventions.
-**Output:** `Exports/Resources_<CC>_<timestamp>.csv`, and
-`Exports/AddressCheck_<CC>_<timestamp>.csv` when `-CheckAddress` is used.
-**Permissions:** View-Only Recipients.
 
 ### `Resources/Set-RoomMailbox.ps1`
 
@@ -700,16 +610,11 @@ defects, all of them reachable in normal use.
 - **`New-SharedCalendar.ps1 -CreateAccessGroup` will usually fail.** Mail-enabled security groups
   can no longer be created in Exchange Online. Create the group on-prem and let it sync, or use
   `-DirectGrant`.
-- **`Test-PhishingSimulationRule.ps1` disconnects Exchange Online when it finishes** — including a
-  session you had open before you ran it.
 - **Message trace retains roughly 10 days.** A larger `-DaysBack` returns nothing for the older part
   of the range rather than warning that it cannot cover it.
 - **Graph usage data lags about two days**, so `Get-MailboxReceiveVolume.ps1` is never quite
   current. Fine for a licensing decision, wrong for anything operational.
-- **Six of these scripts carry a banner header rather than comment-based help** —
-  `Edit-MailGroupMember`, `New-FaxDistributionList`, `New-MailGroup`, `New-SharedMailbox`,
-  `Get-MailboxReceiveVolume` and `Test-PhishingSimulationRule`. They document themselves
+- **Five of these scripts carry a banner header rather than comment-based help** —
+  `Edit-MailGroupMember`, `New-FaxDistributionList`, `New-MailGroup`, `New-SharedMailbox`
+  and `Get-MailboxReceiveVolume`. They document themselves
   perfectly well in an editor, but `Get-Help -Full` returns almost nothing for them.
-- **`Set-RoomMailbox.ps1` and `Get-CountryResource.ps1` ship with placeholder naming tokens.**
-  `-MarkerPrefix`, `-AddressPrefix`, the city/site codes and the calendar naming convention follow
-  one subsidiary's scheme. They are parameters, but the defaults are not yours.
