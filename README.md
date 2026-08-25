@@ -89,6 +89,15 @@ report ended up treating `GB` (2,775 users) and `UK` (2) as two different countr
 each carried their own copy of that function, one copy got a bug fix and the other two didn't —
 and the resulting phantom records silently disabled a safety check on a bulk delete.
 
+`Platforms/_Shared/Tools/Test-EndpointConnectivity.ps1` tests a list of `host:port`
+destinations in four layers — DNS, timed TCP connect, TLS handshake, HTTP request — and
+names the layer that failed. It exists for the argument that follows a firewall request,
+and the layer that earns its keep is the TLS one: an inspecting proxy lets the connection
+through and hands you a certificate it signed itself, which passes any test that stops at
+"did it connect", and then breaks anything that pins or validates the issuer. The blocked
+destinations are printed at the end in a form you can paste into the ticket. It is not
+Microsoft 365 tooling at all, but it is the tool that gets a deployment unblocked.
+
 `Platforms/_Shared/Tools/Clear-M365TokenCache.ps1` clears the machine-wide MSAL, WAM and
 `.IdentityService` token caches, which is the fix for a PowerShell session stuck signing in as the
 wrong account. It lives here rather than under a platform because it is not scoped to one: clearing
